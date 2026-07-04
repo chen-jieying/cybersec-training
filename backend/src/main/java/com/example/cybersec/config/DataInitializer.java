@@ -12,8 +12,9 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * 数据初始化器 - 在首次启动时创建基础数据
- * 只初始化管理员、教师和班级账号，题库和情景剧本
- * 学生数据由管理员/教师通过系统添加
+ * 使用 H2 文件持久化数据库，数据在应用重启后不会丢失
+ * 仅在对应数据不存在时才插入，避免重复初始化
+ * 管理员/教师/学生账号初始化后，可在系统中添加新用户并登录
  */
 @Configuration
 public class DataInitializer {
@@ -26,40 +27,60 @@ public class DataInitializer {
       TeachingResourceRepository teachingResourceRepository,
       QuestionRepository questionRepository) {
     return args -> {
+      System.out.println("===== 数据初始化检查开始 =====");
+
       // ========== 基础用户账号 ==========
       if (userRepository.findByUsername("admin1").isEmpty()) {
         userRepository.save(new User(null, "admin1", "123456", "admin",
             "系统管理员", "None", null, "管理员", "13800000001"));
+        System.out.println("[初始化] 创建管理员账号: admin1/123456");
+      } else {
+        System.out.println("[跳过] 管理员账号已存在");
       }
       if (userRepository.findByUsername("teacher1").isEmpty()) {
         userRepository.save(new User(null, "teacher1", "123456", "teacher",
             "李老师", "初二", null, "高级教师", "13800000002"));
+        System.out.println("[初始化] 创建教师账号: teacher1/123456");
+      } else {
+        System.out.println("[跳过] 教师1账号已存在");
       }
       if (userRepository.findByUsername("teacher2").isEmpty()) {
         userRepository.save(new User(null, "teacher2", "123456", "teacher",
             "王老师", "初一", null, "中级教师", "13800000003"));
+        System.out.println("[初始化] 创建教师账号: teacher2/123456");
+      } else {
+        System.out.println("[跳过] 教师2账号已存在");
       }
       // 示例学生（真实数据由教师添加）
       if (userRepository.findByUsername("student1").isEmpty()) {
         userRepository.save(new User(null, "student1", "123456", "student",
             "张三", "初二", 1L, null, ""));
+        System.out.println("[初始化] 创建学生账号: student1/123456");
+      } else {
+        System.out.println("[跳过] 学生1账号已存在");
       }
       if (userRepository.findByUsername("student2").isEmpty()) {
         userRepository.save(new User(null, "student2", "123456", "student",
             "李四", "初二", 1L, null, ""));
+        System.out.println("[初始化] 创建学生账号: student2/123456");
+      } else {
+        System.out.println("[跳过] 学生2账号已存在");
       }
 
       // ========== 班级数据 ==========
-      if (schoolClassRepository.findAll().isEmpty()) {
+      if (schoolClassRepository.count() == 0) {
         // teacher1(id=2) 负责的班级
         schoolClassRepository.save(new SchoolClass(null, "初二", "初二(2)班", 2L, "李老师"));
         schoolClassRepository.save(new SchoolClass(null, "初二", "初二(3)班", 2L, "李老师"));
         // teacher2(id=3) 负责的班级
         schoolClassRepository.save(new SchoolClass(null, "初一", "初一(1)班", 3L, "王老师"));
+        System.out.println("[初始化] 创建3个班级");
+      } else {
+        System.out.println("[跳过] 班级数据已存在 (" + schoolClassRepository.count() + "个)");
       }
 
       // ========== 情景剧本 ==========
-      if (scenarioScriptRepository.findAll().isEmpty()) {
+      if (scenarioScriptRepository.count() == 0) {
         scenarioScriptRepository.save(new ScenarioScript(null, "phishing",
             "钓鱼邮件识别", "模拟收到可疑钓鱼邮件，学习如何识别和应对钓鱼攻击", "内置"));
         scenarioScriptRepository.save(new ScenarioScript(null, "account",
@@ -68,17 +89,23 @@ public class DataInitializer {
             "电信诈骗防范", "模拟接到诈骗电话，学习如何辨别和应对电信诈骗", "内置"));
         scenarioScriptRepository.save(new ScenarioScript(null, "social",
             "社交工程攻击", "模拟社交平台上的信息窃取场景", "内置"));
+        System.out.println("[初始化] 创建4个情景剧本");
+      } else {
+        System.out.println("[跳过] 情景剧本已存在 (" + scenarioScriptRepository.count() + "个)");
       }
 
       // ========== 教学资源 ==========
-      if (teachingResourceRepository.findAll().isEmpty()) {
+      if (teachingResourceRepository.count() == 0) {
         teachingResourceRepository.save(new TeachingResource(null,
             "网络安全基础知识手册", "pdf", "/files/security-manual.pdf",
             "涵盖网络安全基本概念、常见威胁和防护措施的基础教程", "基础,入门", 2L));
+        System.out.println("[初始化] 创建1个教学资源");
+      } else {
+        System.out.println("[跳过] 教学资源已存在 (" + teachingResourceRepository.count() + "个)");
       }
 
       // ========== 闯关题库（含详细解析） ==========
-      if (questionRepository.findAll().isEmpty()) {
+      if (questionRepository.count() == 0) {
         // 关卡1: 基础知识 (8题)
         questionRepository.save(new Question(null, "基础知识",
             "以下哪项是强密码的最佳实践？", "使用生日作为密码",
@@ -223,7 +250,13 @@ public class DataInitializer {
             "约线下见面并告知家庭地址", "讨论兴趣爱好",
             "C", "choice", 10,
             "与网友线下见面存在风险，告知家庭地址更是可能危及人身安全。与陌生网友交流时应保持警惕，避免透露个人隐私和行踪信息。"));
+
+        System.out.println("[初始化] 创建22道闯关题目（含详细解析）");
+      } else {
+        System.out.println("[跳过] 题库已存在 (" + questionRepository.count() + "道题)");
       }
+
+      System.out.println("===== 数据初始化检查完成 =====");
     };
   }
 }

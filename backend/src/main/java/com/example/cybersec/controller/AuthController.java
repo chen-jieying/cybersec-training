@@ -38,24 +38,7 @@ public class AuthController {
           result.put("phone", user.getPhone());
           return ResponseEntity.ok((Object) result);
         })
-        .orElseGet(() -> {
-          if ("admin1".equals(username) && "123456".equals(password)) {
-            return ResponseEntity.ok(Map.of(
-                "id", 1, "username", "admin1", "role", "admin",
-                "fullName", "管理员", "grade", "", "classId", 0));
-          }
-          if ("teacher1".equals(username) && "123456".equals(password)) {
-            return ResponseEntity.ok(Map.of(
-                "id", 2, "username", "teacher1", "role", "teacher",
-                "fullName", "李老师", "grade", "", "classId", 0));
-          }
-          if ("student1".equals(username) && "123456".equals(password)) {
-            return ResponseEntity.ok(Map.of(
-                "id", 4, "username", "student1", "role", "student",
-                "fullName", "张三", "grade", "初二", "classId", 1));
-          }
-          return ResponseEntity.badRequest().body(Map.of("message", "用户名或密码错误"));
-        });
+        .orElse(ResponseEntity.badRequest().body(Map.of("message", "用户名或密码错误")));
   }
 }
 
