@@ -8,7 +8,7 @@
             <div class="stat-content">
               <el-icon :size="36" color="#409EFF"><User /></el-icon>
               <div>
-                <div class="stat-number">{{ stats.totalStudents + stats.totalTeachers }}</div>
+                <div class="stat-number">{{ stats.totalUsers }}</div>
                 <div class="stat-label">总用户数</div>
               </div>
             </div>
@@ -73,8 +73,8 @@
             <div class="stat-content">
               <el-icon :size="36" color="#67C23A"><DataAnalysis /></el-icon>
               <div>
-                <div class="stat-number">{{ stats.avgScore }}</div>
-                <div class="stat-label">班级均分</div>
+                <div class="stat-number">{{ stats.totalStudents }}</div>
+                <div class="stat-label">学生总数</div>
               </div>
             </div>
           </el-card>
@@ -84,8 +84,8 @@
             <div class="stat-content">
               <el-icon :size="36" color="#E6A23C"><ChatDotRound /></el-icon>
               <div>
-                <div class="stat-number">{{ stats.completionRate }}%</div>
-                <div class="stat-label">对话实训记录</div>
+                <div class="stat-number">{{ stats.totalScenarios }}</div>
+                <div class="stat-label">情景剧本</div>
               </div>
             </div>
           </el-card>
@@ -151,26 +151,77 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   User, Edit, Document, FolderOpened, School, DataAnalysis,
   Trophy, ChatDotRound, UserFilled
 } from '@element-plus/icons-vue';
-import { mockStats, mockClasses, mockQuestions, mockScenarios, mockResources } from '../mock/data';
+import {
+  getAdminUsers, getAdminQuestions, getAdminResources, getAdminScenarios,
+  getTeacherClasses, getTeacherStudents
+} from '../api';
 
 const router = useRouter();
 const currentRole = ref(localStorage.getItem('currentRole') || 'student');
 
-const stats = computed(() => ({
-  ...mockStats,
-  totalClasses: mockClasses.length,
-  totalQuestions: mockQuestions.length,
-  totalScenarios: mockScenarios.length,
-  totalResources: mockResources.length,
-}));
+const stats = reactive({
+  totalUsers: 0,
+  totalStudents: 0,
+  totalTeachers: 0,
+  totalClasses: 0,
+  totalQuestions: 0,
+  totalScenarios: 0,
+  totalResources: 0,
+});
+
+const loadAdminStats = async () => {
+  try {
+    const [usersRes, questionsRes, resourcesRes, scenariosRes] = await Promise.all([
+      getAdminUsers(),
+      getAdminQuestions(),
+      getAdminResources(),
+      getAdminScenarios(),
+    ]);
+    const users = usersRes.data || [];
+    stats.totalUsers = users.length;
+    stats.totalStudents = users.filter((u: any) => u.role === 'student').length;
+    stats.totalTeachers = users.filter((u: any) => u.role === 'teacher').length;
+    stats.totalQuestions = (questionsRes.data || []).length;
+    stats.totalResources = (resourcesRes.data || []).length;
+    stats.totalScenarios = (scenariosRes.data || []).length;
+  } catch (e) {
+    console.error('加载管理员统计数据失败', e);
+  }
+};
+
+const loadTeacherStats = async () => {
+  try {
+    const [classesRes, studentsRes, scenariosRes, resourcesRes] = await Promise.all([
+      getTeacherClasses(),
+      getTeacherStudents(),
+      getAdminScenarios(),
+      getAdminResources(),
+    ]);
+    const classes = classesRes.data || [];
+    stats.totalClasses = classes.length;
+    stats.totalStudents = (studentsRes.data || []).length;
+    stats.totalScenarios = (scenariosRes.data || []).length;
+    stats.totalResources = (resourcesRes.data || []).length;
+  } catch (e) {
+    console.error('加载教师统计数据失败', e);
+  }
+};
 
 const go = (path: string) => router.push(path);
+
+onMounted(() => {
+  if (currentRole.value === 'admin') {
+    loadAdminStats();
+  } else if (currentRole.value === 'teacher') {
+    loadTeacherStats();
+  }
+});
 </script>
 
 <style scoped>

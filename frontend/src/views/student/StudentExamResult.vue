@@ -1,6 +1,6 @@
 <template>
   <div class="student-result-page">
-    <el-card shadow="hover">
+    <el-card shadow="hover" v-loading="loading">
       <div class="result-header">
         <el-icon :size="64" :color="passColor"><CircleCheckFilled v-if="passed" /><CircleCloseFilled v-else /></el-icon>
         <h2>{{ passed ? '恭喜通关！' : '继续努力！' }}</h2>
@@ -8,13 +8,7 @@
       </div>
 
       <div class="score-display">
-        <el-progress
-          type="dashboard"
-          :percentage="percentage"
-          :color="passColor"
-          :stroke-width="12"
-          :width="180"
-        >
+        <el-progress type="dashboard" :percentage="percentage" :color="passColor" :stroke-width="12" :width="180">
           <template #default>
             <span class="score-text">{{ score }}</span>
             <span class="score-total">/ {{ totalScore }}</span>
@@ -24,53 +18,31 @@
 
       <div class="result-stats">
         <el-row :gutter="16">
-          <el-col :span="8">
-            <el-card shadow="hover" class="stat-card">
-              <div class="stat-value" style="color:#67C23A">{{ correctCount }}</div>
-              <div class="stat-label">正确题数</div>
-            </el-card>
-          </el-col>
-          <el-col :span="8">
-            <el-card shadow="hover" class="stat-card">
-              <div class="stat-value" style="color:#F56C6C">{{ wrongCount }}</div>
-              <div class="stat-label">错误题数</div>
-            </el-card>
-          </el-col>
-          <el-col :span="8">
-            <el-card shadow="hover" class="stat-card">
-              <div class="stat-value" style="color:#409EFF">{{ accuracy }}%</div>
-              <div class="stat-label">正确率</div>
-            </el-card>
-          </el-col>
+          <el-col :span="8"><el-card shadow="hover" class="stat-card"><div class="stat-value" style="color:#67C23A">{{ correctCount }}</div><div class="stat-label">正确题数</div></el-card></el-col>
+          <el-col :span="8"><el-card shadow="hover" class="stat-card"><div class="stat-value" style="color:#F56C6C">{{ wrongCount }}</div><div class="stat-label">错误题数</div></el-card></el-col>
+          <el-col :span="8"><el-card shadow="hover" class="stat-card"><div class="stat-value" style="color:#409EFF">{{ accuracy }}%</div><div class="stat-label">正确率</div></el-card></el-col>
         </el-row>
       </div>
 
       <div class="detail-section">
         <h4>答题详情</h4>
-        <el-collapse>
-          <el-collapse-item
-            v-for="(r, index) in results"
-            :key="r.id"
-            :title="`第${index + 1}题：${r.questionText.substring(0, 40)}...`"
-          >
+        <el-collapse v-if="results.length > 0">
+          <el-collapse-item v-for="(r, index) in results" :key="r.id"
+            :title="`第${index + 1}题：${(r.questionText || '').substring(0, 40)}...`">
             <div class="detail-item" :class="{ correct: r.correct, wrong: !r.correct }">
               <p><strong>题目：</strong>{{ r.questionText }}</p>
-              <p><strong>你的答案：</strong>
-                <el-tag :type="r.correct ? 'success' : 'danger'">{{ r.userAnswer || '未作答' }}</el-tag>
-              </p>
+              <p><strong>你的答案：</strong><el-tag :type="r.correct ? 'success' : 'danger'">{{ r.userAnswer || '未作答' }}</el-tag></p>
               <p v-if="!r.correct"><strong>正确答案：</strong><el-tag type="success">{{ r.correctAnswer }}</el-tag></p>
               <p><strong>得分：</strong>{{ r.score }} 分</p>
             </div>
-            <!-- 题目解析区域 -->
+            <!-- 题目解析 -->
             <div v-if="r.explanation" class="explanation-box">
-              <div class="explanation-header">
-                <el-icon color="#409EFF" :size="18"><InfoFilled /></el-icon>
-                <strong>题目解析</strong>
-              </div>
+              <div class="explanation-header"><el-icon color="#409EFF" :size="18"><InfoFilled /></el-icon><strong>题目解析</strong></div>
               <div class="explanation-content">{{ r.explanation }}</div>
             </div>
           </el-collapse-item>
         </el-collapse>
+        <el-empty v-else description="暂无答题详情" />
       </div>
 
       <div class="result-actions">
@@ -86,11 +58,12 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { CircleCheckFilled, CircleCloseFilled, InfoFilled } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
-import { mockStages } from '../../mock/data';
+import { getStudentStages } from '../../api';
 
 const route = useRoute();
 const router = useRouter();
 const stageId = computed(() => Number(route.params.stageId));
+const loading = ref(false);
 
 const stageName = ref('');
 const score = ref(0);
@@ -104,7 +77,8 @@ const passed = computed(() => accuracy.value >= 60);
 const percentage = computed(() => accuracy.value);
 const passColor = computed(() => passed.value ? '#67C23A' : '#F56C6C');
 
-onMounted(() => {
+onMounted(async () => {
+  // 从 sessionStorage 读取答题结果
   const data = sessionStorage.getItem(`examResult_${stageId.value}`);
   if (data) {
     const parsed = JSON.parse(data);
@@ -119,15 +93,23 @@ onMounted(() => {
 });
 
 const goBack = () => router.push('/student/stages');
-const goNext = () => {
-  const nextStage = mockStages.find(s => s.id === stageId.value + 1);
-  if (nextStage) {
-    // Unlock next stage
-    nextStage.unlocked = true;
-    router.push(`/student/exam/${nextStage.id}`);
-  } else {
-    ElMessage.success('你已完成所有关卡！');
+
+const goNext = async () => {
+  loading.value = true;
+  try {
+    const res = await getStudentStages();
+    const stages = res.data || [];
+    const nextStage = stages.find((s: any) => s.id === stageId.value + 1);
+    if (nextStage && nextStage.unlocked) {
+      router.push(`/student/exam/${nextStage.id}`);
+    } else {
+      ElMessage.success('你已完成所有关卡！');
+      router.push('/student/stages');
+    }
+  } catch {
     router.push('/student/stages');
+  } finally {
+    loading.value = false;
   }
 };
 </script>
@@ -150,7 +132,6 @@ const goNext = () => {
 .detail-item.correct { background: #f0f9eb; border-left: 4px solid #67C23A; }
 .detail-item.wrong { background: #fef0f0; border-left: 4px solid #F56C6C; }
 .detail-item p { margin: 6px 0; }
-/* 题目解析样式 */
 .explanation-box { margin-top: 8px; padding: 16px; background: #f0f7ff; border: 1px solid #c6e2ff; border-radius: 8px; }
 .explanation-header { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; color: #409EFF; }
 .explanation-content { font-size: 14px; line-height: 1.8; color: #303133; }

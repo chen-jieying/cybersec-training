@@ -6,7 +6,7 @@
         <p>选择一个安全情景，与AI进行多轮对话，学习如何应对各种网络安全威胁</p>
       </div>
 
-      <el-row :gutter="20">
+      <el-row :gutter="20" v-loading="loading">
         <el-col v-for="scenario in scenarios" :key="scenario.id" :span="8">
           <el-card shadow="hover" class="scenario-card" @click="enterScenario(scenario)">
             <div class="scenario-icon">
@@ -31,22 +31,39 @@
           </el-card>
         </el-col>
       </el-row>
+
+      <el-empty v-if="!loading && scenarios.length === 0" description="暂无情景剧本" />
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { Message, Lock, Phone, ChatDotRound, Warning, Connection } from '@element-plus/icons-vue';
-import { mockScenarios, ScenarioScript } from '../../mock/data';
+import { getStudentScenarios } from '../../api';
 
 const router = useRouter();
-const scenarios = ref<ScenarioScript[]>(mockScenarios);
+const loading = ref(false);
+const scenarios = ref<any[]>([]);
 
-const enterScenario = (scenario: ScenarioScript) => {
+const loadScenarios = async () => {
+  loading.value = true;
+  try {
+    const res = await getStudentScenarios();
+    scenarios.value = res.data || [];
+  } catch (e) {
+    console.error('加载情景剧本失败', e);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const enterScenario = (scenario: any) => {
   router.push(`/student/chat/${scenario.id}`);
 };
+
+onMounted(loadScenarios);
 </script>
 
 <style scoped>

@@ -78,12 +78,14 @@ import { ref, computed, onMounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { CloseBold, Monitor, UserFilled, Promotion } from '@element-plus/icons-vue';
-import { mockScenarios } from '../../mock/data';
+import { getStudentScenarios } from '../../api';
 
 const route = useRoute();
 const router = useRouter();
 const scenarioId = computed(() => Number(route.params.scenarioId));
-const scenario = computed(() => mockScenarios.find(s => s.id === scenarioId.value));
+
+const allScenarios = ref<any[]>([]);
+const scenario = computed(() => allScenarios.value.find(s => s.id === scenarioId.value));
 const scenarioTitle = computed(() => scenario.value?.title || '未知场景');
 
 interface ChatMessage {
@@ -132,7 +134,6 @@ const sendMessage = async () => {
   const text = inputMessage.value.trim();
   if (!text || loading.value) return;
 
-  // Add user message
   messages.value.push({
     role: 'user',
     content: text,
@@ -143,7 +144,6 @@ const sendMessage = async () => {
 
   loading.value = true;
 
-  // Simulate AI response
   await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1500));
 
   const sceneType = scenario.value?.sceneType || 'phishing';
@@ -157,7 +157,6 @@ const sendMessage = async () => {
       time: formatTime(new Date()),
     });
   } else {
-    // Training complete
     const aiScore = Math.floor(60 + Math.random() * 40);
     score.value = aiScore;
     messages.value.push({
@@ -193,7 +192,19 @@ const scrollToBottom = async () => {
   }
 };
 
-onMounted(initChat);
+const loadScenarios = async () => {
+  try {
+    const res = await getStudentScenarios();
+    allScenarios.value = res.data || [];
+  } catch (e) {
+    console.error('加载情景剧本失败', e);
+  }
+};
+
+onMounted(async () => {
+  await loadScenarios();
+  initChat();
+});
 </script>
 
 <style scoped>

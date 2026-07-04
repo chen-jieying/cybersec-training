@@ -7,13 +7,12 @@
           <p>管理闯关题库中的题目</p>
         </div>
         <div class="header-actions">
-          <el-button type="primary" @click="showAdd = true">
+          <el-button type="primary" @click="openAdd">
             <el-icon><Plus /></el-icon> 新增题目
           </el-button>
         </div>
       </div>
 
-      <!-- 分类筛选 -->
       <el-row :gutter="16" style="margin-bottom: 16px;">
         <el-col :span="6">
           <el-select v-model="filterCategory" placeholder="按分类筛选" clearable style="width:100%">
@@ -31,7 +30,7 @@
         </el-col>
       </el-row>
 
-      <el-table :data="filteredQuestions" border stripe style="width:100%">
+      <el-table :data="filteredQuestions" border stripe style="width:100%" v-loading="loading">
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="category" label="分类" width="100">
           <template #default="{ row }">
@@ -44,7 +43,7 @@
         <el-table-column prop="stageId" label="关卡" width="80" align="center">
           <template #default="{ row }">第{{ row.stageId }}关</template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" link @click="editQuestion(row)">编辑</el-button>
             <el-button size="small" type="danger" link @click="deleteQuestion(row)">删除</el-button>
@@ -53,7 +52,6 @@
       </el-table>
     </el-card>
 
-    <!-- 新增/编辑题目弹窗 -->
     <el-dialog v-model="showAdd" :title="editingId ? '编辑题目' : '新增题目'" width="700px" :close-on-click-modal="false">
       <el-form :model="questionForm" label-width="100px">
         <el-form-item label="分类">
@@ -113,9 +111,10 @@
 import { ref, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
-import { mockQuestions, Question } from '../../mock/data';
+import { getAdminQuestions, createQuestion, updateQuestion, deleteQuestion } from '../../api';
 
-const questions = ref<Question[]>([]);
+const loading = ref(false);
+const questions = ref<any[]>([]);
 const filterCategory = ref('');
 const filterStage = ref<number | ''>('');
 const showAdd = ref(false);
@@ -142,42 +141,59 @@ const filteredQuestions = computed(() => {
   });
 });
 
-const loadQuestions = () => {
-  questions.value = [...mockQuestions];
+const loadQuestions = async () => {
+  loading.value = true;
+  try {
+    const res = await getAdminQuestions();
+    questions.value = res.data || [];
+  } catch (e) {
+    console.error('加载题目失败', e);
+    ElMessage.error('加载题目列表失败');
+  } finally {
+    loading.value = false;
+  }
 };
 
-const editQuestion = (row: Question) => {
+const openAdd = () => {
+  editingId.value = null;
+  questionForm.value = { category: '', stageId: 1, questionText: '', optionA: '', optionB: '', optionC: '', optionD: '', answer: 'A', score: 10, explanation: '' };
+  showAdd.value = true;
+};
+
+const editQuestion = (row: any) => {
   editingId.value = row.id;
   questionForm.value = { ...row };
   showAdd.value = true;
 };
 
-const confirmSave = () => {
+const confirmSave = async () => {
   if (!questionForm.value.questionText) {
     ElMessage.warning('请输入题目内容');
     return;
   }
-  if (editingId.value) {
-    const idx = questions.value.findIndex(q => q.id === editingId.value);
-    if (idx >= 0) {
-      questions.value[idx] = { ...questionForm.value, id: editingId.value };
+  try {
+    if (editingId.value) {
+      await updateQuestion(editingId.value, questionForm.value);
+      ElMessage.success('题目更新成功');
+    } else {
+      await createQuestion(questionForm.value);
+      ElMessage.success('题目添加成功');
     }
-    ElMessage.success('题目更新成功');
-  } else {
-    const newQ: Question = { ...questionForm.value, id: Date.now() };
-    questions.value.push(newQ);
-    ElMessage.success('题目添加成功');
+    showAdd.value = false;
+    editingId.value = null;
+    questionForm.value = { category: '', stageId: 1, questionText: '', optionA: '', optionB: '', optionC: '', optionD: '', answer: 'A', score: 10, explanation: '' };
+    loadQuestions();
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || '操作失败');
   }
-  showAdd.value = false;
-  editingId.value = null;
-  questionForm.value = { category: '', stageId: 1, questionText: '', optionA: '', optionB: '', optionC: '', optionD: '', answer: 'A', score: 10, explanation: '' };
 };
 
-const deleteQuestion = async (row: Question) => {
+const deleteQuestion = async (row: any) => {
   try {
     await ElMessageBox.confirm('确定要删除该题目吗？', '删除确认', { type: 'warning' });
-    questions.value = questions.value.filter(q => q.id !== row.id);
+    await deleteQuestion(row.id);
     ElMessage.success('删除成功');
+    loadQuestions();
   } catch { /* cancelled */ }
 };
 

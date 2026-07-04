@@ -13,7 +13,7 @@
         </div>
       </div>
 
-      <el-table :data="scenarios" border stripe style="width:100%">
+      <el-table :data="scenarios" border stripe style="width:100%" v-loading="loading">
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="title" label="剧本名称" width="200" />
         <el-table-column prop="sceneType" label="场景类型" width="120">
@@ -36,7 +36,6 @@
       </el-table>
     </el-card>
 
-    <!-- 新增/编辑剧本抽屉 -->
     <el-drawer
       v-model="drawerVisible"
       :title="editingId ? '编辑剧本' : '新增剧本'"
@@ -69,7 +68,7 @@
             v-model="scenarioForm.description"
             type="textarea"
             :rows="6"
-            placeholder="请输入场景描述Prompt，如：你收到了一封来自'银行'的邮件，声称你的账户出现异常..."
+            placeholder="请输入场景描述Prompt"
           />
         </el-form-item>
         <el-form-item label="打分规则">
@@ -77,7 +76,7 @@
             v-model="scenarioForm.scoringRule"
             type="textarea"
             :rows="4"
-            placeholder="请输入AI打分规则，如：正确识别钓鱼邮件得30分，选择正确应对措施得40分..."
+            placeholder="请输入AI打分规则"
           />
         </el-form-item>
         <el-form-item label="图标">
@@ -103,16 +102,17 @@
 import { ref, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
-import { mockScenarios, ScenarioScript } from '../../mock/data';
+import { getAdminScenarios, createScenario, updateScenario, deleteScenario } from '../../api';
 
-const scenarios = ref<ScenarioScript[]>([]);
+const loading = ref(false);
+const scenarios = ref<any[]>([]);
 const drawerVisible = ref(false);
 const editingId = ref<number | null>(null);
 
 const scenarioForm = ref({
   title: '',
   sceneType: '',
-  difficulty: 'easy' as 'easy' | 'medium' | 'hard',
+  difficulty: 'easy',
   description: '',
   scoringRule: '',
   icon: 'Message',
@@ -133,8 +133,17 @@ const diffText = (d: string) => {
   return map[d] || d;
 };
 
-const loadScenarios = () => {
-  scenarios.value = [...mockScenarios];
+const loadScenarios = async () => {
+  loading.value = true;
+  try {
+    const res = await getAdminScenarios();
+    scenarios.value = res.data || [];
+  } catch (e) {
+    console.error('加载剧本失败', e);
+    ElMessage.error('加载剧本列表失败');
+  } finally {
+    loading.value = false;
+  }
 };
 
 const openAddDrawer = () => {
@@ -143,43 +152,38 @@ const openAddDrawer = () => {
   drawerVisible.value = true;
 };
 
-const editScenario = (row: ScenarioScript) => {
+const editScenario = (row: any) => {
   editingId.value = row.id;
-  scenarioForm.value = { ...row, scoringRule: '' };
+  scenarioForm.value = { ...row, scoringRule: row.scoringRule || '' };
   drawerVisible.value = true;
 };
 
-const confirmSave = () => {
+const confirmSave = async () => {
   if (!scenarioForm.value.title || !scenarioForm.value.sceneType) {
     ElMessage.warning('请填写必填信息');
     return;
   }
-  if (editingId.value) {
-    const idx = scenarios.value.findIndex(s => s.id === editingId.value);
-    if (idx >= 0) {
-      scenarios.value[idx] = { ...scenarios.value[idx], ...scenarioForm.value };
+  try {
+    if (editingId.value) {
+      await updateScenario(editingId.value, scenarioForm.value);
+      ElMessage.success('剧本更新成功');
+    } else {
+      await createScenario(scenarioForm.value);
+      ElMessage.success('剧本添加成功');
     }
-    ElMessage.success('剧本更新成功');
-  } else {
-    const newScenario: ScenarioScript = {
-      id: Date.now(),
-      sceneType: scenarioForm.value.sceneType,
-      title: scenarioForm.value.title,
-      description: scenarioForm.value.description,
-      difficulty: scenarioForm.value.difficulty,
-      icon: scenarioForm.value.icon,
-    };
-    scenarios.value.push(newScenario);
-    ElMessage.success('剧本添加成功');
+    drawerVisible.value = false;
+    loadScenarios();
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || '操作失败');
   }
-  drawerVisible.value = false;
 };
 
-const deleteScenario = async (row: ScenarioScript) => {
+const deleteScenario = async (row: any) => {
   try {
     await ElMessageBox.confirm(`确定要删除剧本"${row.title}"吗？`, '删除确认', { type: 'warning' });
-    scenarios.value = scenarios.value.filter(s => s.id !== row.id);
+    await deleteScenario(row.id);
     ElMessage.success('删除成功');
+    loadScenarios();
   } catch { /* cancelled */ }
 };
 

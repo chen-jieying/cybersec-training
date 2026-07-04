@@ -9,18 +9,10 @@
           <h1>网络信息安全素养实训平台</h1>
           <p>提升网络安全意识，掌握安全防护技能</p>
           <div class="feature-list">
-            <div class="feature-item">
-              <el-icon><CircleCheck /></el-icon> AI情景仿真实训
-            </div>
-            <div class="feature-item">
-              <el-icon><CircleCheck /></el-icon> 闯关答题挑战
-            </div>
-            <div class="feature-item">
-              <el-icon><CircleCheck /></el-icon> 学情数据分析
-            </div>
-            <div class="feature-item">
-              <el-icon><CircleCheck /></el-icon> 教学资源管理
-            </div>
+            <div class="feature-item"><el-icon><CircleCheck /></el-icon> AI情景仿真实训</div>
+            <div class="feature-item"><el-icon><CircleCheck /></el-icon> 闯关答题挑战</div>
+            <div class="feature-item"><el-icon><CircleCheck /></el-icon> 学情数据分析</div>
+            <div class="feature-item"><el-icon><CircleCheck /></el-icon> 教学资源管理</div>
           </div>
         </div>
       </div>
@@ -37,18 +29,9 @@
             </el-form-item>
             <el-form-item label="角色" prop="role">
               <el-select v-model="form.role" placeholder="请选择角色" style="width:100%">
-                <el-option label="学生" value="student">
-                  <span style="float:left">学生</span>
-                  <span style="float:right;color:#909399;font-size:13px">闯关实训</span>
-                </el-option>
-                <el-option label="教师" value="teacher">
-                  <span style="float:left">教师</span>
-                  <span style="float:right;color:#909399;font-size:13px">班级管理</span>
-                </el-option>
-                <el-option label="管理员" value="admin">
-                  <span style="float:left">管理员</span>
-                  <span style="float:right;color:#909399;font-size:13px">系统管理</span>
-                </el-option>
+                <el-option label="学生" value="student" />
+                <el-option label="教师" value="teacher" />
+                <el-option label="管理员" value="admin" />
               </el-select>
             </el-form-item>
             <el-form-item>
@@ -58,10 +41,7 @@
             </el-form-item>
           </el-form>
           <div class="login-tips">
-            <p>测试账号：</p>
-            <p>管理员：admin1 / 123456</p>
-            <p>教师：teacher1 / 123456</p>
-            <p>学生：student1 / 123456</p>
+            <p>测试账号：管理员 admin1 / 123456 | 教师 teacher1 / 123456 | 学生 student1 / 123456</p>
           </div>
         </el-card>
       </div>
@@ -74,7 +54,7 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { User, Lock, Monitor, CircleCheck } from '@element-plus/icons-vue';
-import { validateLogin } from '../mock/data';
+import { loginApi } from '../api';
 
 const router = useRouter();
 const loading = ref(false);
@@ -92,112 +72,46 @@ const handleLogin = async () => {
   if (!valid) return;
 
   loading.value = true;
+  try {
+    const res = await loginApi({
+      username: form.value.username,
+      password: form.value.password,
+      role: form.value.role
+    });
+    const user = res.data;
 
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 800));
-
-  const user = validateLogin(form.value.username, form.value.password, form.value.role);
-  if (user) {
     localStorage.setItem('currentRole', user.role);
-    localStorage.setItem('currentUser', user.fullName);
+    localStorage.setItem('currentUser', user.username);
+    localStorage.setItem('currentFullName', user.fullName || user.username);
+    localStorage.setItem('currentUserId', user.id?.toString() || '');
     const expiry = Date.now() + 24 * 60 * 60 * 1000;
     localStorage.setItem('tokenExpiry', expiry.toString());
-    ElMessage.success(`欢迎回来，${user.fullName}！`);
+
+    ElMessage.success(`欢迎回来，${user.fullName || user.username}！`);
     router.push('/dashboard');
-  } else {
-    ElMessage.error('登录失败，请检查用户名、密码或角色');
+  } catch (err: any) {
+    const msg = err?.response?.data?.message || '登录失败，请检查用户名、密码或角色';
+    ElMessage.error(msg);
+  } finally {
+    loading.value = false;
   }
-  loading.value = false;
 };
 </script>
 
 <style scoped>
-.login-page {
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #1a2a3a 0%, #2d4a6b 50%, #1a2a3a 100%);
-}
-.login-bg {
-  display: flex;
-  width: 960px;
-  min-height: 540px;
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-}
-.login-left {
-  flex: 1;
-  background: linear-gradient(135deg, #409EFF 0%, #337ecc 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px;
-  color: #fff;
-}
-.platform-intro {
-  text-align: center;
-}
-.platform-icon {
-  margin-bottom: 20px;
-}
-.platform-intro h1 {
-  font-size: 24px;
-  margin: 0 0 12px 0;
-  font-weight: 700;
-}
-.platform-intro p {
-  font-size: 14px;
-  opacity: 0.9;
-  margin-bottom: 30px;
-}
-.feature-list {
-  text-align: left;
-  display: inline-block;
-}
-.feature-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  font-size: 14px;
-  opacity: 0.95;
-}
-.login-right {
-  flex: 1;
-  background: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px;
-}
-.login-card {
-  width: 100%;
-  max-width: 380px;
-  box-shadow: none;
-  border: none;
-}
-.login-card h2 {
-  text-align: center;
-  margin: 0 0 4px 0;
-  color: #303133;
-}
-.login-subtitle {
-  text-align: center;
-  color: #909399;
-  font-size: 14px;
-  margin: 0 0 30px 0;
-}
-.login-tips {
-  margin-top: 20px;
-  padding: 12px;
-  background: #f5f7fa;
-  border-radius: 8px;
-  font-size: 12px;
-  color: #909399;
-}
-.login-tips p {
-  margin: 2px 0;
-}
+.login-page { height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #1a2a3a 0%, #2d4a6b 50%, #1a2a3a 100%); }
+.login-bg { display: flex; width: 960px; min-height: 540px; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+.login-left { flex: 1; background: linear-gradient(135deg, #409EFF 0%, #337ecc 100%); display: flex; align-items: center; justify-content: center; padding: 40px; color: #fff; }
+.platform-intro { text-align: center; }
+.platform-icon { margin-bottom: 20px; }
+.platform-intro h1 { font-size: 24px; margin: 0 0 12px 0; font-weight: 700; }
+.platform-intro p { font-size: 14px; opacity: 0.9; margin-bottom: 30px; }
+.feature-list { text-align: left; display: inline-block; }
+.feature-item { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 14px; opacity: 0.95; }
+.login-right { flex: 1; background: #fff; display: flex; align-items: center; justify-content: center; padding: 40px; }
+.login-card { width: 100%; max-width: 380px; box-shadow: none; border: none; }
+.login-card h2 { text-align: center; margin: 0 0 4px 0; color: #303133; }
+.login-subtitle { text-align: center; color: #909399; font-size: 14px; margin: 0 0 30px 0; }
+.login-tips { margin-top: 20px; padding: 12px; background: #f5f7fa; border-radius: 8px; font-size: 12px; color: #909399; text-align: center; }
+.login-tips p { margin: 2px 0; }
 </style>

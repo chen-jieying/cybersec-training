@@ -13,28 +13,28 @@
         </div>
       </div>
 
-      <el-table :data="resources" border stripe style="width:100%">
+      <el-table :data="resources" border stripe style="width:100%" v-loading="loading">
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="title" label="资源名称" width="250" show-overflow-tooltip />
-        <el-table-column prop="resourceType" label="类型" width="80" align="center">
+        <el-table-column label="类型" width="80" align="center">
           <template #default="{ row }">
-            <el-tag :type="typeTag(row.resourceType)">{{ row.resourceType.toUpperCase() }}</el-tag>
+            <el-tag :type="typeTag(row.resourceType)">{{ (row.resourceType || '').toUpperCase() }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="description" label="描述" min-width="250" show-overflow-tooltip />
         <el-table-column prop="tags" label="标签" width="150">
           <template #default="{ row }">
-            <el-tag v-for="tag in row.tags" :key="tag" size="small" style="margin:2px">{{ tag }}</el-tag>
+            <el-tag v-for="tag in (row.tags || [])" :key="tag" size="small" style="margin:2px">{{ tag }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="uploadedBy" label="上传者" width="100" />
         <el-table-column prop="uploadDate" label="上传日期" width="120" />
-        <el-table-column label="操作" width="210" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" link @click="previewResource(row)">
               <el-icon><View /></el-icon> 预览
             </el-button>
-            <el-button size="small" type="success" link @click="downloadResource(row)">
+            <el-button size="small" type="success" link @click="handleDownload(row)">
               <el-icon><Download /></el-icon> 下载
             </el-button>
             <el-button size="small" type="danger" link @click="deleteResource(row)">删除</el-button>
@@ -43,7 +43,6 @@
       </el-table>
     </el-card>
 
-    <!-- 上传资源弹窗 -->
     <el-dialog v-model="showAdd" title="上传资源" width="500px" :close-on-click-modal="false">
       <el-form :model="resourceForm" label-width="80px">
         <el-form-item label="资源名称" required>
@@ -62,10 +61,8 @@
         <el-form-item label="标签">
           <el-input v-model="resourceForm.tagsInput" placeholder="多个标签用逗号分隔" />
         </el-form-item>
-        <el-form-item label="选择文件">
-          <el-upload action="" :auto-upload="false" :show-file-list="true">
-            <el-button type="primary">点击上传</el-button>
-          </el-upload>
+        <el-form-item label="文件URL">
+          <el-input v-model="resourceForm.fileUrl" placeholder="请输入资源文件URL" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -74,7 +71,6 @@
       </template>
     </el-dialog>
 
-    <!-- PDF 预览弹窗 -->
     <el-dialog v-model="showPreview" :title="previewTitle" width="80%" top="5vh">
       <div class="pdf-preview-container">
         <div class="pdf-placeholder">
@@ -92,10 +88,11 @@
 import { ref, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Document, View, Download } from '@element-plus/icons-vue';
-import { mockResources, TeachingResource } from '../../mock/data';
-import { previewPdf } from '../../api';
+import { getAdminResources, createResource, deleteResource } from '../../api';
+import { previewPdf, downloadResource as downloadApi } from '../../api';
 
-const resources = ref<TeachingResource[]>([]);
+const loading = ref(false);
+const resources = ref<any[]>([]);
 const showAdd = ref(false);
 const showPreview = ref(false);
 const previewTitle = ref('');
@@ -106,6 +103,7 @@ const resourceForm = ref({
   resourceType: 'pdf' as string,
   description: '',
   tagsInput: '',
+  fileUrl: '',
 });
 
 const typeTag = (type: string) => {
@@ -113,34 +111,46 @@ const typeTag = (type: string) => {
   return map[type] || 'info';
 };
 
-const loadResources = () => {
-  resources.value = [...mockResources];
+const loadResources = async () => {
+  loading.value = true;
+  try {
+    const res = await getAdminResources();
+    resources.value = res.data || [];
+  } catch (e) {
+    console.error('加载资源失败', e);
+    ElMessage.error('加载资源列表失败');
+  } finally {
+    loading.value = false;
+  }
 };
 
-const confirmAdd = () => {
+const confirmAdd = async () => {
   if (!resourceForm.value.title) {
     ElMessage.warning('请输入资源名称');
     return;
   }
-  const newRes: TeachingResource = {
-    id: Date.now(),
-    title: resourceForm.value.title,
-    resourceType: resourceForm.value.resourceType as any,
-    fileUrl: '',
-    description: resourceForm.value.description,
-    tags: resourceForm.value.tagsInput.split(',').map(t => t.trim()).filter(Boolean),
-    uploadedBy: '当前用户',
-    uploadDate: new Date().toISOString().split('T')[0],
-  };
-  resources.value.push(newRes);
-  showAdd.value = false;
-  resourceForm.value = { title: '', resourceType: 'pdf', description: '', tagsInput: '' };
-  ElMessage.success('资源上传成功');
+  try {
+    await createResource({
+      title: resourceForm.value.title,
+      resourceType: resourceForm.value.resourceType,
+      description: resourceForm.value.description,
+      tags: resourceForm.value.tagsInput.split(',').map(t => t.trim()).filter(Boolean),
+      fileUrl: resourceForm.value.fileUrl || '/api/resource/pdf',
+      uploadedBy: localStorage.getItem('currentFullName') || '管理员',
+      uploadDate: new Date().toISOString().split('T')[0],
+    });
+    ElMessage.success('资源上传成功');
+    showAdd.value = false;
+    resourceForm.value = { title: '', resourceType: 'pdf', description: '', tagsInput: '', fileUrl: '' };
+    loadResources();
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || '上传失败');
+  }
 };
 
-const previewResource = (row: TeachingResource) => {
+const previewResource = (row: any) => {
   previewTitle.value = row.title;
-  previewDesc.value = row.description;
+  previewDesc.value = row.description || '';
   showPreview.value = true;
 };
 
@@ -156,46 +166,30 @@ const openPdfWindow = async () => {
   }
 };
 
-/** 下载资源文件 */
-const downloadResource = (row: TeachingResource) => {
+const handleDownload = async (row: any) => {
   try {
-    const type = row.resourceType;
-    let content = '';
-    const fileName = `${row.title}.${type === 'pdf' ? 'pdf' : 'txt'}`;
-
-    if (type === 'pdf') {
-      // 生成简单PDF内容
-      content = `网络安全素养实训平台\n\n${row.title}\n\n${row.description}\n\n仅供教学使用`;
-      const blob = new Blob([content], { type: 'application/pdf' });
-      linkDownload(blob, fileName);
-    } else {
-      content = `标题: ${row.title}\n类型: ${type}\n描述: ${row.description}\n标签: ${row.tags?.join(', ')}\n\n平台: 网络安全素养实训平台`;
-      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-      linkDownload(blob, fileName);
-    }
+    const res = await downloadApi(row.id);
+    const blob = new Blob([res.data]);
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${row.title}.${row.resourceType || 'pdf'}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
     ElMessage.success(`${row.title} 下载成功`);
   } catch {
     ElMessage.warning('下载失败，请重试');
   }
 };
 
-/** 创建下载链接并触发 */
-const linkDownload = (blob: Blob, fileName: string) => {
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  window.URL.revokeObjectURL(url);
-};
-
-const deleteResource = async (row: TeachingResource) => {
+const deleteResource = async (row: any) => {
   try {
     await ElMessageBox.confirm(`确定要删除"${row.title}"吗？`, '删除确认', { type: 'warning' });
-    resources.value = resources.value.filter(r => r.id !== row.id);
+    await deleteResource(row.id);
     ElMessage.success('删除成功');
+    loadResources();
   } catch { /* cancelled */ }
 };
 

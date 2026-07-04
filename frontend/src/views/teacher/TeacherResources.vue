@@ -6,17 +6,17 @@
         <p>浏览和预览教学资源库中的课件和资料</p>
       </div>
 
-      <el-row :gutter="16">
+      <el-row :gutter="16" v-loading="loading">
         <el-col v-for="res in resources" :key="res.id" :span="8" style="margin-bottom:16px">
           <el-card shadow="hover" class="resource-card">
             <div class="resource-header">
-              <el-tag :type="typeTag(res.resourceType)" size="small">{{ res.resourceType.toUpperCase() }}</el-tag>
+              <el-tag :type="typeTag(res.resourceType)" size="small">{{ (res.resourceType || '').toUpperCase() }}</el-tag>
               <span class="resource-date">{{ res.uploadDate }}</span>
             </div>
             <h4 class="resource-title" @click="previewResource(res)">{{ res.title }}</h4>
             <p class="resource-desc">{{ res.description }}</p>
             <div class="resource-tags">
-              <el-tag v-for="tag in res.tags" :key="tag" size="small" type="info">{{ tag }}</el-tag>
+              <el-tag v-for="tag in (res.tags || [])" :key="tag" size="small" type="info">{{ tag }}</el-tag>
             </div>
             <div class="resource-footer">
               <span>上传者：{{ res.uploadedBy }}</span>
@@ -24,7 +24,7 @@
                 <el-button size="small" type="primary" link @click="previewResource(res)">
                   <el-icon><View /></el-icon> 预览
                 </el-button>
-                <el-button size="small" type="success" link @click="downloadResource(res)">
+                <el-button size="small" type="success" link @click="handleDownload(res)">
                   <el-icon><Download /></el-icon> 下载
                 </el-button>
               </div>
@@ -32,9 +32,10 @@
           </el-card>
         </el-col>
       </el-row>
+
+      <el-empty v-if="!loading && resources.length === 0" description="暂无教学资源" />
     </el-card>
 
-    <!-- PDF预览弹窗 -->
     <el-dialog v-model="showPreview" :title="previewTitle" width="80%" top="5vh">
       <div class="pdf-preview-container">
         <div class="pdf-placeholder">
@@ -49,13 +50,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Document, View, Download } from '@element-plus/icons-vue';
-import { mockResources, TeachingResource } from '../../mock/data';
-import { previewPdf } from '../../api';
+import { getResourceList, previewPdf, downloadResource as downloadApi } from '../../api';
 
-const resources = ref<TeachingResource[]>(mockResources);
+const loading = ref(false);
+const resources = ref<any[]>([]);
 const showPreview = ref(false);
 const previewTitle = ref('');
 const previewDesc = ref('');
@@ -65,24 +66,32 @@ const typeTag = (type: string) => {
   return map[type] || 'info';
 };
 
-const previewResource = (row: TeachingResource) => {
+const loadResources = async () => {
+  loading.value = true;
+  try {
+    const res = await getResourceList();
+    resources.value = res.data || [];
+  } catch (e) {
+    console.error('加载资源失败', e);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const previewResource = (row: any) => {
   previewTitle.value = row.title;
-  previewDesc.value = row.description;
+  previewDesc.value = row.description || '';
   showPreview.value = true;
 };
 
-/** 下载教学资源 */
-const downloadResource = (row: TeachingResource) => {
+const handleDownload = async (row: any) => {
   try {
-    const type = row.resourceType;
-    const content = `标题: ${row.title}\n类型: ${type}\n描述: ${row.description}\n标签: ${row.tags?.join(', ')}\n\n网络安全素养实训平台`;
-    const blob = type === 'pdf'
-      ? new Blob([content], { type: 'application/pdf' })
-      : new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const res = await downloadApi(row.id);
+    const blob = new Blob([res.data]);
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${row.title}.${type === 'pdf' ? 'pdf' : 'txt'}`;
+    a.download = `${row.title}.${row.resourceType || 'pdf'}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -104,6 +113,8 @@ const openPdfWindow = async () => {
     ElMessage.warning('PDF加载失败');
   }
 };
+
+onMounted(loadResources);
 </script>
 
 <style scoped>

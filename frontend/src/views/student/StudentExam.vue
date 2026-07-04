@@ -1,6 +1,6 @@
 <template>
   <div class="student-exam-page">
-    <el-card shadow="hover">
+    <el-card shadow="hover" v-loading="loading">
       <div class="page-header">
         <div>
           <h3>{{ stageName }}</h3>
@@ -13,13 +13,10 @@
         </div>
       </div>
 
+      <el-empty v-if="!loading && questions.length === 0" description="该关卡暂无题目" />
+
       <div class="questions-list">
-        <el-card
-          v-for="(q, index) in questions"
-          :key="q.id"
-          shadow="hover"
-          class="question-card"
-        >
+        <el-card v-for="(q, index) in questions" :key="q.id" shadow="hover" class="question-card">
           <div class="question-header">
             <span class="question-num">第{{ index + 1 }}题</span>
             <el-tag size="small">{{ q.category }}</el-tag>
@@ -29,24 +26,17 @@
           <el-radio-group v-model="answers[q.id]" class="options-group">
             <el-radio v-for="opt in ['A','B','C','D']" :key="opt" :value="opt" class="option-item">
               <span class="option-label">{{ opt }}.</span>
-              {{ q[`option${opt}` as keyof typeof q] }}
+              {{ q['option' + opt] }}
             </el-radio>
           </el-radio-group>
         </el-card>
       </div>
 
       <div class="submit-area">
-        <el-button
-          type="primary"
-          size="large"
-          @click="submitExam"
-          :disabled="answeredCount < questions.length"
-        >
+        <el-button type="primary" size="large" @click="submitExam" :disabled="answeredCount < questions.length" :loading="submitting">
           <el-icon><Finished /></el-icon> 提交试卷
         </el-button>
-        <span v-if="answeredCount < questions.length" class="submit-hint">
-          还有 {{ questions.length - answeredCount }} 题未作答
-        </span>
+        <span v-if="answeredCount < questions.length" class="submit-hint">还有 {{ questions.length - answeredCount }} 题未作答</span>
       </div>
     </el-card>
   </div>
@@ -57,67 +47,70 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Finished } from '@element-plus/icons-vue';
-import { mockStages } from '../../mock/data';
+import { getStageQuestions, submitExam } from '../../api';
 
 const route = useRoute();
 const router = useRouter();
 const stageId = computed(() => Number(route.params.stageId));
-const stage = computed(() => mockStages.find(s => s.id === stageId.value));
-const stageName = computed(() => stage.value?.name || '未知关卡');
-const questions = computed(() => stage.value?.questions || []);
+const loading = ref(false);
+const submitting = ref(false);
+const questions = ref<any[]>([]);
+
+const stageNames = ['', '第一关：安全基础', '第二关：钓鱼防护', '第三关：社交工程'];
+const stageName = computed(() => stageNames[stageId.value] || `第${stageId.value}关`);
 
 const answers = ref<Record<number, string>>({});
-const totalScore = computed(() => questions.value.reduce((sum, q) => sum + q.score, 0));
+const totalScore = computed(() => questions.value.reduce((sum, q) => sum + (q.score || 0), 0));
+const answeredCount = computed(() => questions.value.filter(q => answers.value[q.id]).length);
 
-const answeredCount = computed(() => {
-  return questions.value.filter(q => answers.value[q.id]).length;
-});
-
-const submitExam = async () => {
+const loadQuestions = async () => {
+  loading.value = true;
   try {
-    await ElMessageBox.confirm(
-      '确定要提交试卷吗？提交后将自动判分。',
-      '提交确认',
-      { type: 'warning', confirmButtonText: '确定提交', cancelButtonText: '继续检查' }
-    );
-
-    // Auto scoring - 自动判分并携带解析字段
-    let score = 0;
-    const results: any[] = [];
-    questions.value.forEach(q => {
-      const userAnswer = answers.value[q.id];
-      const correct = userAnswer === q.answer;
-      if (correct) score += q.score;
-      results.push({
-        id: q.id,
-        questionText: q.questionText,
-        userAnswer,
-        correctAnswer: q.answer,
-        correct,
-        score: correct ? q.score : 0,
-        explanation: (q as any).explanation || '', // 携带解析字段
-      });
-    });
-
-    // Store results for result page
-    sessionStorage.setItem(`examResult_${stageId.value}`, JSON.stringify({
-      score,
-      totalScore: totalScore.value,
-      results,
-      stageName: stageName.value,
-    }));
-
-    ElMessage.success(`试卷提交成功！得分：${score}/${totalScore.value}`);
-    router.push(`/student/result/${stageId.value}`);
-  } catch { /* cancelled */ }
+    const res = await getStageQuestions(stageId.value);
+    questions.value = res.data || [];
+  } catch {
+    ElMessage.warning('加载题目失败，请刷新页面重试');
+  } finally {
+    loading.value = false;
+  }
 };
 
-onMounted(() => {
-  if (!stage.value) {
-    ElMessage.error('关卡不存在');
-    router.back();
+const submitExamHandler = async () => {
+  try {
+    await ElMessageBox.confirm('确定要提交试卷吗？提交后将自动判分。', '提交确认', {
+      type: 'warning', confirmButtonText: '确定提交', cancelButtonText: '继续检查'
+    });
+  } catch { return; }
+
+  submitting.value = true;
+  try {
+    const answerList = questions.value.map(q => ({
+      questionId: q.id,
+      selectedOption: answers.value[q.id] || ''
+    }));
+
+    const res = await submitExam({ stageId: stageId.value, answers: answerList });
+    const data = res.data;
+
+    // 存储结果用于结果页展示
+    sessionStorage.setItem(`examResult_${stageId.value}`, JSON.stringify({
+      score: data.score,
+      totalScore: data.totalScore,
+      results: data.results,
+      stageName: stageName.value,
+      examSessionId: data.examSessionId
+    }));
+
+    ElMessage.success(`试卷提交成功！得分：${data.score}/${data.totalScore}`);
+    router.push(`/student/result/${stageId.value}`);
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.error || '提交失败，请重试');
+  } finally {
+    submitting.value = false;
   }
-});
+};
+
+onMounted(loadQuestions);
 </script>
 
 <style scoped>

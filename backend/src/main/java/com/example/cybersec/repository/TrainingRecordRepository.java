@@ -7,5 +7,8 @@ import java.util.List;
 
 public interface TrainingRecordRepository extends JpaRepository<TrainingRecord, Long> {
   List<TrainingRecord> findByStudentId(Long studentId);
+
+  /** 按学生ID和场景ID查询训练记录 */
+  List<TrainingRecord> findByStudentIdAndScenarioId(Long studentId, Long scenarioId);
 }
 
