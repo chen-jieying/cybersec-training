@@ -96,6 +96,10 @@
         <el-form-item label="分值">
           <el-input-number v-model="questionForm.score" :min="1" :max="100" />
         </el-form-item>
+        <el-form-item label="题目解析">
+          <el-input v-model="questionForm.explanation" type="textarea" :rows="4"
+            placeholder="请输入正确答案的详细解析，帮助学生理解答题思路" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showAdd = false">取消</el-button>
@@ -127,6 +131,7 @@ const questionForm = ref({
   optionD: '',
   answer: 'A',
   score: 10,
+  explanation: '',
 });
 
 const filteredQuestions = computed(() => {
@@ -165,7 +170,7 @@ const confirmSave = () => {
   }
   showAdd.value = false;
   editingId.value = null;
-  questionForm.value = { category: '', stageId: 1, questionText: '', optionA: '', optionB: '', optionC: '', optionD: '', answer: 'A', score: 10 };
+  questionForm.value = { category: '', stageId: 1, questionText: '', optionA: '', optionB: '', optionC: '', optionD: '', answer: 'A', score: 10, explanation: '' };
 };
 
 const deleteQuestion = async (row: Question) => {

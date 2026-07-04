@@ -80,12 +80,12 @@
           </el-card>
         </el-col>
         <el-col :span="6">
-          <el-card shadow="hover" class="stat-card" @click="go('/users')">
+          <el-card shadow="hover" class="stat-card" @click="go('/teacher/chat')">
             <div class="stat-content">
-              <el-icon :size="36" color="#E6A23C"><User /></el-icon>
+              <el-icon :size="36" color="#E6A23C"><ChatDotRound /></el-icon>
               <div>
-                <div class="stat-number">{{ stats.totalStudents }}</div>
-                <div class="stat-label">学生总数</div>
+                <div class="stat-number">{{ stats.completionRate }}%</div>
+                <div class="stat-label">对话实训记录</div>
               </div>
             </div>
           </el-card>
@@ -104,7 +104,7 @@
       </el-row>
       <el-card shadow="hover" class="welcome-card">
         <h2>欢迎回来，老师！</h2>
-        <p>请通过侧边栏管理班级、查看学情数据。</p>
+        <p>请通过侧边栏管理班级、查看学情数据和学生对话实训记录。</p>
       </el-card>
     </template>
 

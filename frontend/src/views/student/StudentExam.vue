@@ -81,7 +81,7 @@ const submitExam = async () => {
       { type: 'warning', confirmButtonText: '确定提交', cancelButtonText: '继续检查' }
     );
 
-    // Auto scoring
+    // Auto scoring - 自动判分并携带解析字段
     let score = 0;
     const results: any[] = [];
     questions.value.forEach(q => {
@@ -95,6 +95,7 @@ const submitExam = async () => {
         correctAnswer: q.answer,
         correct,
         score: correct ? q.score : 0,
+        explanation: (q as any).explanation || '', // 携带解析字段
       });
     });
 

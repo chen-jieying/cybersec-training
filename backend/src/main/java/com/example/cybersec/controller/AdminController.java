@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -37,6 +38,7 @@ public class AdminController {
     this.teachingResourceRepository = teachingResourceRepository;
   }
 
+  // ==================== User Management ====================
   @GetMapping("/users")
   public List<User> listUsers() {
     return userRepository.findAll();
@@ -47,6 +49,22 @@ public class AdminController {
     return userRepository.save(user);
   }
 
+  @PutMapping("/users/{id}")
+  public ResponseEntity<?> updateUser(@PathVariable Long id, @RequestBody User user) {
+    Optional<User> existing = userRepository.findById(id);
+    if (existing.isEmpty()) return ResponseEntity.notFound().build();
+    user.setId(id);
+    return ResponseEntity.ok(userRepository.save(user));
+  }
+
+  @DeleteMapping("/users/{id}")
+  public ResponseEntity<?> deleteUser(@PathVariable Long id) {
+    if (!userRepository.existsById(id)) return ResponseEntity.notFound().build();
+    userRepository.deleteById(id);
+    return ResponseEntity.ok().build();
+  }
+
+  // ==================== Class Management ====================
   @GetMapping("/classes")
   public List<SchoolClass> listClasses() {
     return schoolClassRepository.findAll();
@@ -57,6 +75,22 @@ public class AdminController {
     return schoolClassRepository.save(schoolClass);
   }
 
+  @PutMapping("/classes/{id}")
+  public ResponseEntity<?> updateClass(@PathVariable Long id, @RequestBody SchoolClass schoolClass) {
+    Optional<SchoolClass> existing = schoolClassRepository.findById(id);
+    if (existing.isEmpty()) return ResponseEntity.notFound().build();
+    schoolClass.setId(id);
+    return ResponseEntity.ok(schoolClassRepository.save(schoolClass));
+  }
+
+  @DeleteMapping("/classes/{id}")
+  public ResponseEntity<?> deleteClass(@PathVariable Long id) {
+    if (!schoolClassRepository.existsById(id)) return ResponseEntity.notFound().build();
+    schoolClassRepository.deleteById(id);
+    return ResponseEntity.ok().build();
+  }
+
+  // ==================== Question Management ====================
   @GetMapping("/questions")
   public List<Question> listQuestions() {
     return questionRepository.findAll();
@@ -67,6 +101,23 @@ public class AdminController {
     return questionRepository.save(question);
   }
 
+  /** 更新题目（含解析字段） */
+  @PutMapping("/questions/{id}")
+  public ResponseEntity<?> updateQuestion(@PathVariable Long id, @RequestBody Question question) {
+    Optional<Question> existing = questionRepository.findById(id);
+    if (existing.isEmpty()) return ResponseEntity.notFound().build();
+    question.setId(id);
+    return ResponseEntity.ok(questionRepository.save(question));
+  }
+
+  @DeleteMapping("/questions/{id}")
+  public ResponseEntity<?> deleteQuestion(@PathVariable Long id) {
+    if (!questionRepository.existsById(id)) return ResponseEntity.notFound().build();
+    questionRepository.deleteById(id);
+    return ResponseEntity.ok().build();
+  }
+
+  // ==================== Scenario Management ====================
   @GetMapping("/scenarios")
   public List<ScenarioScript> listScenarios() {
     return scenarioScriptRepository.findAll();
@@ -77,6 +128,22 @@ public class AdminController {
     return scenarioScriptRepository.save(scenarioScript);
   }
 
+  @PutMapping("/scenarios/{id}")
+  public ResponseEntity<?> updateScenario(@PathVariable Long id, @RequestBody ScenarioScript scenarioScript) {
+    Optional<ScenarioScript> existing = scenarioScriptRepository.findById(id);
+    if (existing.isEmpty()) return ResponseEntity.notFound().build();
+    scenarioScript.setId(id);
+    return ResponseEntity.ok(scenarioScriptRepository.save(scenarioScript));
+  }
+
+  @DeleteMapping("/scenarios/{id}")
+  public ResponseEntity<?> deleteScenario(@PathVariable Long id) {
+    if (!scenarioScriptRepository.existsById(id)) return ResponseEntity.notFound().build();
+    scenarioScriptRepository.deleteById(id);
+    return ResponseEntity.ok().build();
+  }
+
+  // ==================== Resource Management ====================
   @GetMapping("/resources")
   public List<TeachingResource> listResources() {
     return teachingResourceRepository.findAll();
@@ -85,6 +152,21 @@ public class AdminController {
   @PostMapping("/resources")
   public TeachingResource createResource(@RequestBody TeachingResource resource) {
     return teachingResourceRepository.save(resource);
+  }
+
+  @PutMapping("/resources/{id}")
+  public ResponseEntity<?> updateResource(@PathVariable Long id, @RequestBody TeachingResource resource) {
+    Optional<TeachingResource> existing = teachingResourceRepository.findById(id);
+    if (existing.isEmpty()) return ResponseEntity.notFound().build();
+    resource.setId(id);
+    return ResponseEntity.ok(teachingResourceRepository.save(resource));
+  }
+
+  @DeleteMapping("/resources/{id}")
+  public ResponseEntity<?> deleteResource(@PathVariable Long id) {
+    if (!teachingResourceRepository.existsById(id)) return ResponseEntity.notFound().build();
+    teachingResourceRepository.deleteById(id);
+    return ResponseEntity.ok().build();
   }
 }
 

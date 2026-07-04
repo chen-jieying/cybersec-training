@@ -56,6 +56,11 @@
                   正确答案：<el-tag type="success" size="small">{{ q.correctAnswer }}</el-tag>
                 </span>
               </div>
+              <!-- 解析区域 -->
+              <div v-if="q.explanation" class="wrong-explanation">
+                <el-icon color="#409EFF" :size="14"><InfoFilled /></el-icon>
+                <span>{{ q.explanation }}</span>
+              </div>
             </el-card>
           </div>
         </el-tab-pane>
@@ -81,6 +86,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import { InfoFilled } from '@element-plus/icons-vue';
 import EchartRadar from '../../components/EchartRadar.vue';
 import { mockWrongQuestions, mockScoreHistory } from '../../mock/data';
 
@@ -122,6 +128,7 @@ const radarDetails = ref([
 .wrong-date { font-size: 12px; color: #909399; }
 .wrong-text { font-size: 14px; margin-bottom: 10px; line-height: 1.6; }
 .wrong-answers { display: flex; gap: 24px; font-size: 13px; }
+.wrong-explanation { margin-top: 10px; padding: 10px; background: #f0f7ff; border-radius: 6px; display: flex; align-items: flex-start; gap: 6px; font-size: 13px; color: #606266; line-height: 1.6; }
 .radar-container { max-width: 500px; margin: 0 auto; }
 .radar-detail-card { text-align: center; padding: 12px 0; }
 .detail-value { font-size: 28px; font-weight: 700; color: #409EFF; }

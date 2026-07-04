@@ -20,7 +20,14 @@
             </div>
             <div class="resource-footer">
               <span>上传者：{{ res.uploadedBy }}</span>
-              <el-button size="small" type="primary" link @click="previewResource(res)">预览</el-button>
+              <div class="resource-actions">
+                <el-button size="small" type="primary" link @click="previewResource(res)">
+                  <el-icon><View /></el-icon> 预览
+                </el-button>
+                <el-button size="small" type="success" link @click="downloadResource(res)">
+                  <el-icon><Download /></el-icon> 下载
+                </el-button>
+              </div>
             </div>
           </el-card>
         </el-col>
@@ -44,7 +51,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Document } from '@element-plus/icons-vue';
+import { Document, View, Download } from '@element-plus/icons-vue';
 import { mockResources, TeachingResource } from '../../mock/data';
 import { previewPdf } from '../../api';
 
@@ -62,6 +69,28 @@ const previewResource = (row: TeachingResource) => {
   previewTitle.value = row.title;
   previewDesc.value = row.description;
   showPreview.value = true;
+};
+
+/** 下载教学资源 */
+const downloadResource = (row: TeachingResource) => {
+  try {
+    const type = row.resourceType;
+    const content = `标题: ${row.title}\n类型: ${type}\n描述: ${row.description}\n标签: ${row.tags?.join(', ')}\n\n网络安全素养实训平台`;
+    const blob = type === 'pdf'
+      ? new Blob([content], { type: 'application/pdf' })
+      : new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${row.title}.${type === 'pdf' ? 'pdf' : 'txt'}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    ElMessage.success('下载成功');
+  } catch {
+    ElMessage.warning('下载失败');
+  }
 };
 
 const openPdfWindow = async () => {
@@ -91,6 +120,8 @@ const openPdfWindow = async () => {
 .resource-desc { font-size: 13px; color: #606266; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .resource-tags { margin-bottom: 12px; display: flex; gap: 4px; flex-wrap: wrap; }
 .resource-footer { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #909399; border-top: 1px solid #ebeef5; padding-top: 12px; }
+.resource-actions { display: flex; gap: 4px; }
 .pdf-preview-container { text-align: center; padding: 40px; }
 .pdf-placeholder { padding: 60px 0; }
+.pdf-placeholder p { margin: 12px 0; }
 </style>

@@ -8,16 +8,24 @@
 
       <el-row :gutter="16">
         <el-col v-for="res in resources" :key="res.id" :span="6" style="margin-bottom:16px">
-          <el-card shadow="hover" class="resource-card" @click="previewResource(res)">
+          <el-card shadow="hover" class="resource-card">
             <div class="resource-type">
               <el-tag :type="res.resourceType === 'pdf' ? 'danger' : res.resourceType === 'video' ? 'success' : 'warning'" size="small">
                 {{ res.resourceType.toUpperCase() }}
               </el-tag>
             </div>
-            <h4 class="resource-title">{{ res.title }}</h4>
+            <h4 class="resource-title" @click="previewResource(res)">{{ res.title }}</h4>
             <p class="resource-desc">{{ res.description }}</p>
             <div class="resource-tags">
               <el-tag v-for="tag in res.tags" :key="tag" size="small" type="info">{{ tag }}</el-tag>
+            </div>
+            <div class="resource-footer">
+              <el-button size="small" type="primary" @click="previewResource(res)">
+                <el-icon><View /></el-icon> 预览
+              </el-button>
+              <el-button size="small" type="success" @click="downloadResource(res)">
+                <el-icon><Download /></el-icon> 下载
+              </el-button>
             </div>
           </el-card>
         </el-col>
@@ -41,7 +49,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Document } from '@element-plus/icons-vue';
+import { Document, View, Download } from '@element-plus/icons-vue';
 import { mockResources, TeachingResource } from '../../mock/data';
 import { previewPdf } from '../../api';
 
@@ -54,6 +62,28 @@ const previewResource = (row: TeachingResource) => {
   previewTitle.value = row.title;
   previewDesc.value = row.description;
   showPreview.value = true;
+};
+
+/** 下载教学资源 */
+const downloadResource = (row: TeachingResource) => {
+  try {
+    const type = row.resourceType;
+    const content = `标题: ${row.title}\n类型: ${type}\n描述: ${row.description}\n标签: ${row.tags?.join(', ')}\n\n网络安全素养实训平台`;
+    const blob = type === 'pdf'
+      ? new Blob([content], { type: 'application/pdf' })
+      : new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${row.title}.${type === 'pdf' ? 'pdf' : 'txt'}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    ElMessage.success('下载成功');
+  } catch {
+    ElMessage.warning('下载失败');
+  }
 };
 
 const openPdfPreview = async () => {
@@ -74,10 +104,13 @@ const openPdfPreview = async () => {
 .page-header { margin-bottom: 20px; }
 .page-header h3 { margin: 0 0 4px 0; }
 .page-header p { margin: 0; color: #909399; font-size: 14px; }
-.resource-card { cursor: pointer; transition: transform 0.2s; height: 100%; }
+.resource-card { cursor: default; transition: transform 0.2s; height: 100%; }
 .resource-card:hover { transform: translateY(-2px); }
 .resource-type { margin-bottom: 12px; }
-.resource-title { margin: 0 0 8px 0; font-size: 15px; color: #409EFF; }
+.resource-title { margin: 0 0 8px 0; font-size: 15px; color: #409EFF; cursor: pointer; }
+.resource-title:hover { text-decoration: underline; }
 .resource-desc { font-size: 13px; color: #606266; margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.resource-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.resource-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
+.resource-footer { display: flex; gap: 8px; justify-content: center; padding-top: 8px; border-top: 1px solid #ebeef5; }
+.preview-container { text-align: center; padding: 40px; }
 </style>

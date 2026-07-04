@@ -29,9 +29,14 @@
         </el-table-column>
         <el-table-column prop="uploadedBy" label="上传者" width="100" />
         <el-table-column prop="uploadDate" label="上传日期" width="120" />
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="210" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" type="primary" link @click="previewResource(row)">预览</el-button>
+            <el-button size="small" type="primary" link @click="previewResource(row)">
+              <el-icon><View /></el-icon> 预览
+            </el-button>
+            <el-button size="small" type="success" link @click="downloadResource(row)">
+              <el-icon><Download /></el-icon> 下载
+            </el-button>
             <el-button size="small" type="danger" link @click="deleteResource(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -86,7 +91,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Plus, Document } from '@element-plus/icons-vue';
+import { Plus, Document, View, Download } from '@element-plus/icons-vue';
 import { mockResources, TeachingResource } from '../../mock/data';
 import { previewPdf } from '../../api';
 
@@ -149,6 +154,41 @@ const openPdfWindow = async () => {
   } catch {
     ElMessage.warning('PDF加载失败，请检查网络连接');
   }
+};
+
+/** 下载资源文件 */
+const downloadResource = (row: TeachingResource) => {
+  try {
+    const type = row.resourceType;
+    let content = '';
+    const fileName = `${row.title}.${type === 'pdf' ? 'pdf' : 'txt'}`;
+
+    if (type === 'pdf') {
+      // 生成简单PDF内容
+      content = `网络安全素养实训平台\n\n${row.title}\n\n${row.description}\n\n仅供教学使用`;
+      const blob = new Blob([content], { type: 'application/pdf' });
+      linkDownload(blob, fileName);
+    } else {
+      content = `标题: ${row.title}\n类型: ${type}\n描述: ${row.description}\n标签: ${row.tags?.join(', ')}\n\n平台: 网络安全素养实训平台`;
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      linkDownload(blob, fileName);
+    }
+    ElMessage.success(`${row.title} 下载成功`);
+  } catch {
+    ElMessage.warning('下载失败，请重试');
+  }
+};
+
+/** 创建下载链接并触发 */
+const linkDownload = (blob: Blob, fileName: string) => {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
 };
 
 const deleteResource = async (row: TeachingResource) => {

@@ -13,6 +13,7 @@ import TeacherClasses from '../views/teacher/TeacherClasses.vue';
 import TeacherClassStudents from '../views/teacher/TeacherClassStudents.vue';
 import TeacherAnalytics from '../views/teacher/TeacherAnalytics.vue';
 import TeacherResources from '../views/teacher/TeacherResources.vue';
+import TeacherChatView from '../views/teacher/TeacherChatView.vue';
 import StudentStages from '../views/student/StudentStages.vue';
 import StudentExam from '../views/student/StudentExam.vue';
 import StudentExamResult from '../views/student/StudentExamResult.vue';
@@ -39,6 +40,7 @@ const routes = [
   { path: '/teacher/classes/:classId/students', component: TeacherClassStudents, meta: { roles: ['teacher'] } },
   { path: '/teacher/analytics', component: TeacherAnalytics, meta: { roles: ['teacher'] } },
   { path: '/teacher/resources', component: TeacherResources, meta: { roles: ['teacher'] } },
+  { path: '/teacher/chat', component: TeacherChatView, meta: { roles: ['teacher'] } },
   // Student routes
   { path: '/student/stages', component: StudentStages, meta: { roles: ['student'] } },
   { path: '/student/exam/:stageId', component: StudentExam, meta: { roles: ['student'] } },

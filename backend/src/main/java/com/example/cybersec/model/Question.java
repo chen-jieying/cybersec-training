@@ -34,5 +34,8 @@ public class Question {
   private String answer;
   private String type;
   private Integer score;
+  /** 题目解析 - 展示正确答案的详细解释 */
+  @Column(length = 2000)
+  private String explanation;
 }
 

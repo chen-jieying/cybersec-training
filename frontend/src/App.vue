@@ -85,6 +85,10 @@
               <el-icon><ChatDotRound /></el-icon>
               <span>对话实训</span>
             </el-menu-item>
+            <el-menu-item index="/teacher/chat">
+              <el-icon><ChatLineSquare /></el-icon>
+              <span>学生实训记录</span>
+            </el-menu-item>
             <el-menu-item index="/users">
               <el-icon><List /></el-icon>
               <span>学生信息管理</span>
@@ -130,7 +134,7 @@ import { ElMessageBox, ElMessage } from 'element-plus';
 import {
   ArrowLeft, ArrowDown, UserFilled, SwitchButton, Fold, Expand,
   HomeFilled, User, Edit, Document, FolderOpened, Setting,
-  School, DataAnalysis, ChatDotRound, List, Trophy
+  School, DataAnalysis, ChatDotRound, ChatLineSquare, List, Trophy
 } from '@element-plus/icons-vue';
 
 const router = useRouter();
@@ -151,6 +155,7 @@ const activeMenu = computed(() => {
   const path = route.path;
   if (path.startsWith('/admin/')) return path;
   if (path.startsWith('/teacher/classes/')) return '/teacher/classes';
+  if (path.startsWith('/teacher/chat')) return '/teacher/chat';
   if (path.startsWith('/teacher/')) return path;
   if (path.startsWith('/student/stages')) return '/student/stages';
   if (path.startsWith('/student/exam')) return '/student/stages';

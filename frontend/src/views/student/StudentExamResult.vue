@@ -61,6 +61,14 @@
               <p v-if="!r.correct"><strong>正确答案：</strong><el-tag type="success">{{ r.correctAnswer }}</el-tag></p>
               <p><strong>得分：</strong>{{ r.score }} 分</p>
             </div>
+            <!-- 题目解析区域 -->
+            <div v-if="r.explanation" class="explanation-box">
+              <div class="explanation-header">
+                <el-icon color="#409EFF" :size="18"><InfoFilled /></el-icon>
+                <strong>题目解析</strong>
+              </div>
+              <div class="explanation-content">{{ r.explanation }}</div>
+            </div>
           </el-collapse-item>
         </el-collapse>
       </div>
@@ -76,7 +84,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { CircleCheckFilled, CircleCloseFilled } from '@element-plus/icons-vue';
+import { CircleCheckFilled, CircleCloseFilled, InfoFilled } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { mockStages } from '../../mock/data';
 
@@ -142,5 +150,9 @@ const goNext = () => {
 .detail-item.correct { background: #f0f9eb; border-left: 4px solid #67C23A; }
 .detail-item.wrong { background: #fef0f0; border-left: 4px solid #F56C6C; }
 .detail-item p { margin: 6px 0; }
+/* 题目解析样式 */
+.explanation-box { margin-top: 8px; padding: 16px; background: #f0f7ff; border: 1px solid #c6e2ff; border-radius: 8px; }
+.explanation-header { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; color: #409EFF; }
+.explanation-content { font-size: 14px; line-height: 1.8; color: #303133; }
 .result-actions { text-align: center; margin-top: 24px; display: flex; justify-content: center; gap: 12px; }
 </style>
