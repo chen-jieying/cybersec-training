@@ -245,4 +245,22 @@ export function sendChatMessage(message: string) {
   return api.post('/chat', { message });
 }
 
+// ==================== 用户导入导出 ====================
+
+export function fetchUsers() {
+  return api.get('/users');
+}
+
+export function importUsers(file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post('/users/import', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+}
+
+export function exportUsers() {
+  return api.get('/users/export', { responseType: 'blob' });
+}
+
 export default api;
