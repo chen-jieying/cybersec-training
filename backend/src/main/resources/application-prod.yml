@@ -1,0 +1,25 @@
+# 生产环境配置 - 用于 Railway 云端部署
+# 使用 H2 内存数据库（云端无持久化存储，每次重启数据从 DataInitializer 重新初始化）
+server:
+  address: 0.0.0.0
+  port: ${PORT:8080}
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:cybersec;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    defer-datasource-initialization: true
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+logging:
+  level:
+    root: INFO
+    org.springframework: WARN
