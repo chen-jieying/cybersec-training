@@ -239,4 +239,10 @@ export function downloadResource(id: number) {
   return api.get(`/resource/download/${id}`, { responseType: 'blob' });
 }
 
+// ==================== 对话实训 ====================
+
+export function sendChatMessage(message: string) {
+  return api.post('/chat', { message });
+}
+
 export default api;
