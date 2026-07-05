@@ -154,6 +154,38 @@ export function getStudentChatMessages(studentId: number) {
   return api.get(`/teacher/chat-messages/${studentId}`);
 }
 
+// ==================== 实训任务管理 ====================
+
+/** 获取某班级的实训任务列表 */
+export function getClassTasks(classId: number) {
+  return api.get('/teacher/tasks', { params: { classId } });
+}
+
+/** 发布实训任务到班级 */
+export function createTask(data: { classId: number; scenarioId: number; title: string; description: string }) {
+  return api.post('/teacher/tasks', data);
+}
+
+/** 删除实训任务 */
+export function deleteTask(taskId: number) {
+  return api.delete(`/teacher/tasks/${taskId}`);
+}
+
+/** 获取实训任务的词云数据 */
+export function getTaskWordCloud(taskId: number) {
+  return api.get(`/teacher/tasks/${taskId}/word-cloud`);
+}
+
+/** 获取实训任务中的学生完成情况 */
+export function getTaskStudents(taskId: number) {
+  return api.get(`/teacher/tasks/${taskId}/students`);
+}
+
+/** 获取某学生在某实训任务中的详细回答 */
+export function getStudentTaskResponses(taskId: number, studentId: number) {
+  return api.get(`/teacher/tasks/${taskId}/students/${studentId}/responses`);
+}
+
 export function getTeacherStudents() {
   return api.get('/teacher/students');
 }
@@ -237,6 +269,13 @@ export function previewResource(id: number) {
 
 export function downloadResource(id: number) {
   return api.get(`/resource/download/${id}`, { responseType: 'blob' });
+}
+
+/** 上传教学资源（支持班级可见性设置） */
+export function uploadResource(formData: FormData) {
+  return api.post('/resource/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
 }
 
 // ==================== 对话实训 ====================

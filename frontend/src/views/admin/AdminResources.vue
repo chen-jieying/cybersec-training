@@ -24,7 +24,7 @@
         <el-table-column prop="description" label="描述" min-width="250" show-overflow-tooltip />
         <el-table-column prop="tags" label="标签" width="150">
           <template #default="{ row }">
-            <el-tag v-for="tag in (row.tags || [])" :key="tag" size="small" style="margin:2px">{{ tag }}</el-tag>
+            <el-tag v-for="tag in (typeof row.tags === 'string' ? row.tags.split(',').filter((t:string) => t.trim()) : (row.tags || []))" :key="tag" size="small" style="margin:2px">{{ typeof tag === 'string' ? tag.trim() : tag }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="uploadedBy" label="上传者" width="100" />
@@ -130,14 +130,18 @@ const confirmAdd = async () => {
     return;
   }
   try {
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
     await createResource({
       title: resourceForm.value.title,
       resourceType: resourceForm.value.resourceType,
       description: resourceForm.value.description,
-      tags: resourceForm.value.tagsInput.split(',').map(t => t.trim()).filter(Boolean),
+      tags: resourceForm.value.tagsInput,
       fileUrl: resourceForm.value.fileUrl || '/api/resource/pdf',
-      uploadedBy: localStorage.getItem('currentFullName') || '管理员',
-      uploadDate: new Date().toISOString().split('T')[0],
+      uploadedBy: localStorage.getItem('currentUserId') || '0',
+      uploaderRole: 'ADMIN',
+      visibility: 'ALL',
+      uploadDate: dateStr,
     });
     ElMessage.success('资源上传成功');
     showAdd.value = false;

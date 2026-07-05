@@ -13,6 +13,8 @@ import com.example.cybersec.repository.UserRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 
@@ -151,6 +153,11 @@ public class AdminController {
 
   @PostMapping("/resources")
   public TeachingResource createResource(@RequestBody TeachingResource resource) {
+    // 管理员资源默认全局可见
+    if (resource.getUploaderRole() == null) resource.setUploaderRole("ADMIN");
+    if (resource.getVisibility() == null) resource.setVisibility("ALL");
+    if (resource.getUploadDate() == null)
+      resource.setUploadDate(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")));
     return teachingResourceRepository.save(resource);
   }
 

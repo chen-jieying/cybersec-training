@@ -1,10 +1,11 @@
 package com.example.cybersec.controller;
 
 import com.example.cybersec.model.TeachingResource;
+import com.example.cybersec.model.User;
+import com.example.cybersec.model.SchoolClass;
 import com.example.cybersec.repository.TeachingResourceRepository;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.core.io.Resource;
-import org.springframework.http.HttpHeaders;
+import com.example.cybersec.repository.UserRepository;
+import com.example.cybersec.repository.SchoolClassRepository;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,24 +15,33 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
-import java.util.Optional;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 教学资源控制器 - 支持文件上传、预览、下载
+ * 支持按用户角色和班级可见性过滤
  */
 @RestController
 @RequestMapping("/api/resource")
 public class ResourceController {
 
   private final TeachingResourceRepository resourceRepository;
+  private final UserRepository userRepository;
+  private final SchoolClassRepository schoolClassRepository;
 
-  public ResourceController(TeachingResourceRepository resourceRepository) {
+  public ResourceController(TeachingResourceRepository resourceRepository,
+                            UserRepository userRepository,
+                            SchoolClassRepository schoolClassRepository) {
     this.resourceRepository = resourceRepository;
+    this.userRepository = userRepository;
+    this.schoolClassRepository = schoolClassRepository;
   }
 
   /**
-   * 上传教学资源文件
+   * 上传教学资源文件（支持班级可见性设置）
    */
   @PostMapping("/upload")
   public ResponseEntity<?> uploadFile(
@@ -39,29 +49,35 @@ public class ResourceController {
       @RequestParam(value = "title", required = false) String title,
       @RequestParam(value = "description", required = false) String description,
       @RequestParam(value = "tags", required = false) String tags,
-      @RequestParam(value = "uploadedBy", required = false) Long uploadedBy) {
+      @RequestParam(value = "visibility", required = false, defaultValue = "ALL") String visibility,
+      @RequestParam(value = "visibleClassIds", required = false) String visibleClassIds,
+      @RequestHeader("X-User-Name") String username,
+      @RequestHeader("X-User-Role") String role) {
 
     if (file.isEmpty()) {
       return ResponseEntity.badRequest().body(Map.of("error", "请选择要上传的文件"));
     }
 
     try {
-      // 获取文件信息
       String originalName = file.getOriginalFilename();
       String fileType = getFileType(originalName);
       String fileName = originalName != null ? originalName : "unknown";
 
-      // 存储文件数据到数据库
+      Optional<User> uploaderOpt = userRepository.findByUsername(username);
+      Long uploaderId = uploaderOpt.map(User::getId).orElse(0L);
+
       TeachingResource resource = new TeachingResource();
       resource.setTitle(title != null ? title : fileName);
       resource.setResourceType(fileType);
-      resource.setFileUrl("/api/resource/download/" + System.currentTimeMillis());
+      resource.setFileUrl(fileName);
       resource.setDescription(description != null ? description : "");
       resource.setTags(tags != null ? tags : "");
-      resource.setUploadedBy(uploadedBy != null ? uploadedBy : 0L);
-      // 将文件内容存储为字节数组（通过 @Lob 或扩展字段）
-      // 简化实现：文件数据直接使用 TeachingResource 的现有字段
-      resource.setFileUrl(fileName); // 文件名存储在 fileUrl 中作为标识
+      resource.setUploadedBy(uploaderId);
+      resource.setUploaderRole(role != null ? role.toUpperCase() : "ADMIN");
+      resource.setVisibility(visibility != null ? visibility : "ALL");
+      resource.setVisibleClassIds(visibleClassIds != null ? visibleClassIds : "");
+      resource.setTeacherId("TEACHER".equalsIgnoreCase(role) ? uploaderId : null);
+      resource.setUploadDate(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")));
 
       TeachingResource saved = resourceRepository.save(resource);
 
@@ -154,11 +170,81 @@ public class ResourceController {
   }
 
   /**
-   * 获取所有教学资源列表（供教师端、学生端调用）
+   * 获取教学资源列表（按用户角色和班级可见性过滤）
+   * 管理员：看到所有资源
+   * 教师：看到管理员上传的 + 自己上传的
+   * 学生：看到管理员上传的 + 自己班级教师上传的（按可见性过滤）
    */
   @GetMapping("/list")
-  public ResponseEntity<?> listResources() {
-    return ResponseEntity.ok(resourceRepository.findAll());
+  public ResponseEntity<?> listResources(
+      @RequestHeader("X-User-Name") String username,
+      @RequestHeader("X-User-Role") String role) {
+
+    String upperRole = role != null ? role.toUpperCase() : "";
+    List<TeachingResource> allResources = resourceRepository.findAll();
+
+    if ("ADMIN".equals(upperRole)) {
+      // 管理员看所有
+      return ResponseEntity.ok(allResources);
+    }
+
+    if ("TEACHER".equals(upperRole)) {
+      // 教师看到管理员上传的和自己上传的
+      Optional<User> teacherOpt = userRepository.findByUsername(username);
+      Long teacherId = teacherOpt.map(User::getId).orElse(0L);
+      List<TeachingResource> filtered = allResources.stream()
+          .filter(r -> "ADMIN".equalsIgnoreCase(r.getUploaderRole())
+              || teacherId.equals(r.getTeacherId())
+              || teacherId.equals(r.getUploadedBy()))
+          .collect(Collectors.toList());
+      return ResponseEntity.ok(filtered);
+    }
+
+    if ("STUDENT".equals(upperRole)) {
+      // 学生看到管理员上传的 + 本班教师上传且可见的
+      Optional<User> studentOpt = userRepository.findByUsername(username);
+      if (studentOpt.isEmpty()) return ResponseEntity.ok(Collections.emptyList());
+      Long studentClassId = studentOpt.get().getClassId();
+
+      List<TeachingResource> filtered = new ArrayList<>();
+      for (TeachingResource r : allResources) {
+        // 管理员上传的，所有人可见
+        if ("ADMIN".equalsIgnoreCase(r.getUploaderRole())) {
+          filtered.add(r);
+          continue;
+        }
+        // 教师上传的，按可见性过滤
+        String vis = r.getVisibility();
+        if (vis == null || "ALL".equals(vis)) {
+          // 该教师设置全部班级可见，但还要看学生是否在该教师管理的班级中
+          if (studentClassId != null && isStudentInTeacherClass(studentClassId, r.getTeacherId())) {
+            filtered.add(r);
+          }
+        } else if ("SPECIFIC_CLASSES".equals(vis)) {
+          String classIds = r.getVisibleClassIds();
+          if (classIds != null && !classIds.isEmpty() && studentClassId != null) {
+            List<String> idList = Arrays.asList(classIds.split(","));
+            if (idList.contains(String.valueOf(studentClassId))) {
+              filtered.add(r);
+            }
+          }
+        } else if ("TEACHER_CLASSES".equals(vis)) {
+          if (studentClassId != null && isStudentInTeacherClass(studentClassId, r.getTeacherId())) {
+            filtered.add(r);
+          }
+        }
+      }
+      return ResponseEntity.ok(filtered);
+    }
+
+    return ResponseEntity.ok(allResources);
+  }
+
+  /** 检查学生是否在教师管理的某个班级中 */
+  private boolean isStudentInTeacherClass(Long studentClassId, Long teacherId) {
+    if (teacherId == null) return false;
+    List<SchoolClass> teacherClasses = schoolClassRepository.findByTeacherId(teacherId);
+    return teacherClasses.stream().anyMatch(c -> studentClassId.equals(c.getId()));
   }
 
   // ==================== 辅助方法 ====================

@@ -5,6 +5,8 @@ import com.example.cybersec.repository.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -23,6 +25,7 @@ public class TeacherController {
   private final TrainingRecordRepository trainingRecordRepository;
   private final BehaviorRecordRepository behaviorRecordRepository;
   private final ExamAnswerRepository examAnswerRepository;
+  private final TrainingTaskRepository trainingTaskRepository;
 
   public TeacherController(UserRepository userRepository,
                            SchoolClassRepository schoolClassRepository,
@@ -30,7 +33,8 @@ public class TeacherController {
                            ScenarioScriptRepository scenarioScriptRepository,
                            TrainingRecordRepository trainingRecordRepository,
                            BehaviorRecordRepository behaviorRecordRepository,
-                           ExamAnswerRepository examAnswerRepository) {
+                           ExamAnswerRepository examAnswerRepository,
+                           TrainingTaskRepository trainingTaskRepository) {
     this.userRepository = userRepository;
     this.schoolClassRepository = schoolClassRepository;
     this.questionRepository = questionRepository;
@@ -38,6 +42,7 @@ public class TeacherController {
     this.trainingRecordRepository = trainingRecordRepository;
     this.behaviorRecordRepository = behaviorRecordRepository;
     this.examAnswerRepository = examAnswerRepository;
+    this.trainingTaskRepository = trainingTaskRepository;
   }
 
   // ==================== 班级管理 ====================
@@ -392,5 +397,224 @@ public class TeacherController {
       return ResponseEntity.ok(teacher.get());
     }
     return ResponseEntity.badRequest().body("Unable to load teacher profile");
+  }
+
+  // ==================== 实训任务管理 ====================
+
+  /** 获取某班级的所有实训任务 */
+  @GetMapping("/tasks")
+  public ResponseEntity<?> getClassTasks(@RequestParam Long classId) {
+    List<TrainingTask> tasks = trainingTaskRepository.findByClassId(classId);
+    // 附加场景信息
+    List<Map<String, Object>> result = tasks.stream().map(task -> {
+      Map<String, Object> map = new HashMap<>();
+      map.put("id", task.getId());
+      map.put("classId", task.getClassId());
+      map.put("scenarioId", task.getScenarioId());
+      map.put("title", task.getTitle());
+      map.put("description", task.getDescription());
+      map.put("teacherId", task.getTeacherId());
+      map.put("teacherName", task.getTeacherName());
+      map.put("createdAt", task.getCreatedAt());
+      // 统计完成人数
+      List<User> classStudents = userRepository.findAll().stream()
+          .filter(u -> "student".equalsIgnoreCase(u.getRole()) && task.getClassId().equals(u.getClassId()))
+          .collect(Collectors.toList());
+      long completedCount = classStudents.stream()
+          .filter(s -> trainingRecordRepository.findByStudentId(s.getId()).stream()
+              .anyMatch(r -> task.getScenarioId().equals(r.getScenarioId())))
+          .count();
+      map.put("studentCount", classStudents.size());
+      map.put("completedCount", (int) completedCount);
+      return map;
+    }).collect(Collectors.toList());
+    return ResponseEntity.ok(result);
+  }
+
+  /** 发布实训任务到班级 */
+  @PostMapping("/tasks")
+  public ResponseEntity<?> createTask(@RequestBody Map<String, Object> body,
+                                      @RequestHeader("X-User-Name") String username) {
+    Optional<User> teacher = userRepository.findByUsername(username);
+    if (teacher.isEmpty()) return ResponseEntity.badRequest().body(Map.of("error", "教师不存在"));
+
+    TrainingTask task = new TrainingTask();
+    task.setClassId(Long.valueOf(body.get("classId").toString()));
+    task.setScenarioId(Long.valueOf(body.get("scenarioId").toString()));
+    task.setTitle(body.get("title") != null ? body.get("title").toString() : "");
+    task.setDescription(body.get("description") != null ? body.get("description").toString() : "");
+    task.setTeacherId(teacher.get().getId());
+    task.setTeacherName(teacher.get().getFullName());
+    task.setCreatedAt(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")));
+
+    return ResponseEntity.ok(trainingTaskRepository.save(task));
+  }
+
+  /** 删除实训任务 */
+  @DeleteMapping("/tasks/{taskId}")
+  public ResponseEntity<?> deleteTask(@PathVariable Long taskId) {
+    if (trainingTaskRepository.existsById(taskId)) {
+      trainingTaskRepository.deleteById(taskId);
+      return ResponseEntity.ok(Map.of("message", "删除成功"));
+    }
+    return ResponseEntity.badRequest().body(Map.of("error", "任务不存在"));
+  }
+
+  /** 获取实训任务的词云数据（学生对话中使用最多的词语） */
+  @GetMapping("/tasks/{taskId}/word-cloud")
+  public ResponseEntity<?> getTaskWordCloud(@PathVariable Long taskId) {
+    Optional<TrainingTask> taskOpt = trainingTaskRepository.findById(taskId);
+    if (taskOpt.isEmpty()) return ResponseEntity.badRequest().body(Map.of("error", "任务不存在"));
+
+    TrainingTask task = taskOpt.get();
+    List<User> classStudents = userRepository.findAll().stream()
+        .filter(u -> "student".equalsIgnoreCase(u.getRole()) && task.getClassId().equals(u.getClassId()))
+        .collect(Collectors.toList());
+
+    // 收集该班级学生在相关场景中的对话内容
+    List<String> allWords = new ArrayList<>();
+    for (User student : classStudents) {
+      List<BehaviorRecord> behaviors = behaviorRecordRepository.findByUserId(student.getId());
+      for (BehaviorRecord b : behaviors) {
+        if ("chat".equalsIgnoreCase(b.getActionType()) || "message".equalsIgnoreCase(b.getActionType())) {
+          String detail = b.getDetail();
+          if (detail != null && !detail.isEmpty()) {
+            allWords.add(detail);
+          }
+        }
+      }
+    }
+
+    // 对中文文本进行简单分词和词频统计
+    Map<String, Integer> wordFreq = getWordFrequency(allWords);
+
+    // 取前50个高频词
+    List<Map<String, Object>> wordCloudData = wordFreq.entrySet().stream()
+        .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+        .limit(50)
+        .map(e -> {
+          Map<String, Object> item = new HashMap<>();
+          item.put("name", e.getKey());
+          item.put("value", e.getValue());
+          return item;
+        }).collect(Collectors.toList());
+
+    return ResponseEntity.ok(Map.of(
+        "taskId", taskId,
+        "taskTitle", task.getTitle(),
+        "wordCloud", wordCloudData,
+        "totalWords", allWords.size()
+    ));
+  }
+
+  /** 获取实训任务中所有学生的完成情况 */
+  @GetMapping("/tasks/{taskId}/students")
+  public ResponseEntity<?> getTaskStudents(@PathVariable Long taskId) {
+    Optional<TrainingTask> taskOpt = trainingTaskRepository.findById(taskId);
+    if (taskOpt.isEmpty()) return ResponseEntity.badRequest().body(Map.of("error", "任务不存在"));
+
+    TrainingTask task = taskOpt.get();
+    List<User> classStudents = userRepository.findAll().stream()
+        .filter(u -> "student".equalsIgnoreCase(u.getRole()) && task.getClassId().equals(u.getClassId()))
+        .collect(Collectors.toList());
+
+    List<Map<String, Object>> result = new ArrayList<>();
+    for (User student : classStudents) {
+      List<TrainingRecord> records = trainingRecordRepository.findByStudentId(student.getId());
+      Optional<TrainingRecord> taskRecord = records.stream()
+          .filter(r -> task.getScenarioId().equals(r.getScenarioId()))
+          .findFirst();
+
+      // 统计该学生的对话次数
+      List<BehaviorRecord> behaviors = behaviorRecordRepository.findByUserId(student.getId());
+      long chatCount = behaviors.stream()
+          .filter(b -> "chat".equalsIgnoreCase(b.getActionType()) || "message".equalsIgnoreCase(b.getActionType()))
+          .count();
+
+      Map<String, Object> info = new HashMap<>();
+      info.put("studentId", student.getId());
+      info.put("studentName", student.getFullName());
+      info.put("username", student.getUsername());
+      info.put("grade", student.getGrade());
+      info.put("completed", taskRecord.isPresent());
+      info.put("score", taskRecord.map(TrainingRecord::getScore).orElse(0));
+      info.put("maxScore", taskRecord.map(TrainingRecord::getMaxScore).orElse(100));
+      info.put("status", taskRecord.map(TrainingRecord::getStatus).orElse("未开始"));
+      info.put("completedAt", taskRecord.map(TrainingRecord::getCompletedAt).orElse(""));
+      info.put("chatCount", (int) chatCount);
+      result.add(info);
+    }
+
+    return ResponseEntity.ok(result);
+  }
+
+  /** 获取某个学生在某个实训任务中的所有对话回答 */
+  @GetMapping("/tasks/{taskId}/students/{studentId}/responses")
+  public ResponseEntity<?> getStudentTaskResponses(@PathVariable Long taskId,
+                                                    @PathVariable Long studentId) {
+    Optional<TrainingTask> taskOpt = trainingTaskRepository.findById(taskId);
+    Optional<User> studentOpt = userRepository.findById(studentId);
+    if (taskOpt.isEmpty() || studentOpt.isEmpty()) {
+      return ResponseEntity.badRequest().body(Map.of("error", "任务或学生不存在"));
+    }
+
+    TrainingTask task = taskOpt.get();
+    User student = studentOpt.get();
+
+    // 获取训练记录
+    List<TrainingRecord> records = trainingRecordRepository.findByStudentId(studentId).stream()
+        .filter(r -> task.getScenarioId().equals(r.getScenarioId()))
+        .collect(Collectors.toList());
+
+    // 获取所有行为记录（对话和回复）
+    List<BehaviorRecord> allBehaviors = behaviorRecordRepository.findByUserId(studentId);
+    List<BehaviorRecord> chatMessages = allBehaviors.stream()
+        .filter(b -> "chat".equalsIgnoreCase(b.getActionType())
+            || "message".equalsIgnoreCase(b.getActionType())
+            || "reply".equalsIgnoreCase(b.getActionType()))
+        .collect(Collectors.toList());
+
+    Map<String, Object> result = new HashMap<>();
+    result.put("studentId", studentId);
+    result.put("studentName", student.getFullName());
+    result.put("taskId", taskId);
+    result.put("taskTitle", task.getTitle());
+    result.put("scenarioId", task.getScenarioId());
+    result.put("trainingRecords", records);
+    result.put("messages", chatMessages);
+    result.put("totalMessages", chatMessages.size());
+
+    return ResponseEntity.ok(result);
+  }
+
+  // ==================== 词频分析辅助方法 ====================
+
+  /** 简单的中文词频统计 */
+  private Map<String, Integer> getWordFrequency(List<String> texts) {
+    Map<String, Integer> freq = new LinkedHashMap<>();
+    // 常见的停用词
+    Set<String> stopWords = new HashSet<>(Arrays.asList(
+        "的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都", "一",
+        "一个", "上", "也", "很", "到", "说", "要", "去", "你", "会", "着",
+        "没有", "看", "好", "自己", "这", "他", "她", "它", "们", "那", "些",
+        "什么", "怎么", "如何", "为什么", "可以", "这个", "那个", "还", "被",
+        "把", "让", "对", "从", "能", "想", "知道", "觉得", "应该", "可能",
+        "吗", "呢", "啊", "吧", "哦", "嗯", "呀", "哈", "哇"
+    ));
+
+    for (String text : texts) {
+      // 按中文分词简单处理：每2-3个字符为一个词
+      String clean = text.replaceAll("[^\\u4e00-\\u9fa5a-zA-Z]", "");
+      for (int i = 0; i < clean.length(); i++) {
+        // 取2-3字词
+        for (int len = 1; len <= 3 && i + len <= clean.length(); len++) {
+          String word = clean.substring(i, i + len);
+          if (word.length() >= 2 && !stopWords.contains(word) && !word.matches("^[a-zA-Z]+$")) {
+            freq.merge(word, 1, Integer::sum);
+          }
+        }
+      }
+    }
+    return freq;
   }
 }
