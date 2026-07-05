@@ -13,18 +13,18 @@
               <el-tag :type="typeTag(res.resourceType)" size="small">{{ (res.resourceType || '').toUpperCase() }}</el-tag>
               <span class="resource-date">{{ res.uploadDate }}</span>
             </div>
-            <h4 class="resource-title" @click="previewResource(res)">{{ res.title }}</h4>
+            <h4 class="resource-title" @click="openPreview(res)">{{ res.title }}</h4>
             <p class="resource-desc">{{ res.description }}</p>
             <div class="resource-tags">
-              <el-tag v-for="tag in (res.tags || [])" :key="tag" size="small" type="info">{{ tag }}</el-tag>
+              <el-tag v-for="(tag, idx) in (res.tags ? res.tags.split(',').filter((t:string) => t.trim()) : [])" :key="idx" size="small" type="info">{{ tag.trim() }}</el-tag>
             </div>
             <div class="resource-footer">
-              <span>上传者：{{ res.uploadedBy }}</span>
+              <span>上传者：{{ res.uploadedBy || '系统' }}</span>
               <div class="resource-actions">
-                <el-button size="small" type="primary" link @click="previewResource(res)">
+                <el-button size="small" type="primary" @click="openPreview(res)">
                   <el-icon><View /></el-icon> 预览
                 </el-button>
-                <el-button size="small" type="success" link @click="handleDownload(res)">
+                <el-button size="small" type="success" @click="handleDownload(res)">
                   <el-icon><Download /></el-icon> 下载
                 </el-button>
               </div>
@@ -36,15 +36,23 @@
       <el-empty v-if="!loading && resources.length === 0" description="暂无教学资源" />
     </el-card>
 
-    <el-dialog v-model="showPreview" :title="previewTitle" width="80%" top="5vh">
-      <div class="pdf-preview-container">
-        <div class="pdf-placeholder">
-          <el-icon :size="64" color="#409EFF"><Document /></el-icon>
-          <p style="font-size:18px;margin-top:16px;">{{ previewTitle }}</p>
-          <p style="color:#909399;">{{ previewDesc }}</p>
-          <el-button type="primary" @click="openPdfWindow">在新窗口打开PDF预览</el-button>
-        </div>
+    <!-- 预览弹窗 - 内嵌 iframe 直接显示 -->
+    <el-dialog v-model="showPreview" :title="previewTitle" width="90%" top="3vh" :close-on-click-modal="false"
+      destroy-on-close>
+      <div v-loading="previewLoading" style="min-height:500px;">
+        <!-- PDF 直接嵌入显示 -->
+        <iframe v-if="previewType === 'pdf'" :src="previewUrl" width="100%" height="700px"
+          style="border:none;border-radius:4px;" @load="previewLoading = false" />
+        <!-- 其他类型显示 HTML -->
+        <iframe v-else :srcdoc="previewHtml" width="100%" height="700px"
+          style="border:none;border-radius:4px;" @load="previewLoading = false" />
       </div>
+      <template #footer>
+        <el-button @click="showPreview = false">关闭</el-button>
+        <el-button type="success" @click="handleDownload(currentPreviewResource)">
+          <el-icon><Download /></el-icon> 下载此资源
+        </el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -52,14 +60,19 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Document, View, Download } from '@element-plus/icons-vue';
-import { getResourceList, previewPdf, downloadResource as downloadApi } from '../../api';
+import { View, Download } from '@element-plus/icons-vue';
+import { getResourceList, downloadResource as downloadApi, previewResource as previewApi } from '../../api';
 
 const loading = ref(false);
 const resources = ref<any[]>([]);
+
 const showPreview = ref(false);
+const previewLoading = ref(false);
 const previewTitle = ref('');
-const previewDesc = ref('');
+const previewType = ref('pdf');
+const previewUrl = ref('');
+const previewHtml = ref('');
+const currentPreviewResource = ref<any>(null);
 
 const typeTag = (type: string) => {
   const map: Record<string, any> = { pdf: 'danger', video: 'success', doc: 'warning' };
@@ -78,13 +91,32 @@ const loadResources = async () => {
   }
 };
 
-const previewResource = (row: any) => {
+const openPreview = async (row: any) => {
+  currentPreviewResource.value = row;
   previewTitle.value = row.title;
-  previewDesc.value = row.description || '';
+  previewType.value = row.resourceType || 'doc';
+  previewLoading.value = true;
+
+  if (previewType.value === 'pdf') {
+    // PDF 类型通过后端API直接在iframe中显示
+    previewUrl.value = `/api/resource/preview/${row.id}`;
+    // 设置超时隐藏 loading
+    setTimeout(() => { previewLoading.value = false; }, 2000);
+  } else {
+    // 视频和文档获取HTML内容嵌入
+    try {
+      const res = await previewApi(row.id);
+      previewHtml.value = typeof res.data === 'string' ? res.data : '';
+    } catch {
+      previewHtml.value = `<html><body style="padding:40px;text-align:center;"><h2>${row.title}</h2><p>${row.description || ''}</p></body></html>`;
+    }
+    previewLoading.value = false;
+  }
   showPreview.value = true;
 };
 
 const handleDownload = async (row: any) => {
+  if (!row) return;
   try {
     const res = await downloadApi(row.id);
     const blob = new Blob([res.data]);
@@ -99,18 +131,6 @@ const handleDownload = async (row: any) => {
     ElMessage.success('下载成功');
   } catch {
     ElMessage.warning('下载失败');
-  }
-};
-
-const openPdfWindow = async () => {
-  try {
-    const res = await previewPdf();
-    const blob = new Blob([res.data], { type: 'application/pdf' });
-    const url = window.URL.createObjectURL(blob);
-    window.open(url);
-    window.URL.revokeObjectURL(url);
-  } catch {
-    ElMessage.warning('PDF加载失败');
   }
 };
 
@@ -131,8 +151,5 @@ onMounted(loadResources);
 .resource-desc { font-size: 13px; color: #606266; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .resource-tags { margin-bottom: 12px; display: flex; gap: 4px; flex-wrap: wrap; }
 .resource-footer { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #909399; border-top: 1px solid #ebeef5; padding-top: 12px; }
-.resource-actions { display: flex; gap: 4px; }
-.pdf-preview-container { text-align: center; padding: 40px; }
-.pdf-placeholder { padding: 60px 0; }
-.pdf-placeholder p { margin: 12px 0; }
+.resource-actions { display: flex; gap: 8px; }
 </style>

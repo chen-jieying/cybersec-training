@@ -144,6 +144,16 @@ export function getClassChatSummary(classId: number) {
   return api.get(`/teacher/class-chat-summary/${classId}`);
 }
 
+/** 获取教师名下所有班级的学生总数 */
+export function getTeacherTotalStudents() {
+  return api.get('/teacher/total-students');
+}
+
+/** 获取学生对话实训的详细消息记录 */
+export function getStudentChatMessages(studentId: number) {
+  return api.get(`/teacher/chat-messages/${studentId}`);
+}
+
 export function getTeacherStudents() {
   return api.get('/teacher/students');
 }

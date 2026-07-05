@@ -159,7 +159,7 @@ import {
 } from '@element-plus/icons-vue';
 import {
   getAdminUsers, getAdminQuestions, getAdminResources, getAdminScenarios,
-  getTeacherClasses, getTeacherStudents
+  getTeacherClasses, getTeacherTotalStudents
 } from '../api';
 
 const router = useRouter();
@@ -197,15 +197,15 @@ const loadAdminStats = async () => {
 
 const loadTeacherStats = async () => {
   try {
-    const [classesRes, studentsRes, scenariosRes, resourcesRes] = await Promise.all([
+    const [classesRes, totalStudentsRes, scenariosRes, resourcesRes] = await Promise.all([
       getTeacherClasses(),
-      getTeacherStudents(),
+      getTeacherTotalStudents(),
       getAdminScenarios(),
       getAdminResources(),
     ]);
     const classes = classesRes.data || [];
     stats.totalClasses = classes.length;
-    stats.totalStudents = (studentsRes.data || []).length;
+    stats.totalStudents = (totalStudentsRes.data || {}).totalStudents || 0;
     stats.totalScenarios = (scenariosRes.data || []).length;
     stats.totalResources = (resourcesRes.data || []).length;
   } catch (e) {

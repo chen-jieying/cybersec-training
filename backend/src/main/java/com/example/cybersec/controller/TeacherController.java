@@ -335,6 +335,56 @@ public class TeacherController {
     return trainingRecordRepository.save(record);
   }
 
+  /** 获取当前教师名下所有班级的学生总数 */
+  @GetMapping("/total-students")
+  public ResponseEntity<?> getTeacherTotalStudents(@RequestHeader("X-User-Name") String username) {
+    Optional<User> teacher = userRepository.findByUsername(username);
+    if (teacher.isEmpty()) {
+      return ResponseEntity.badRequest().body(Map.of("error", "教师不存在"));
+    }
+    Long teacherId = teacher.get().getId();
+    List<SchoolClass> classes = schoolClassRepository.findByTeacherId(teacherId);
+    int totalStudents = 0;
+    for (SchoolClass cls : classes) {
+      long count = userRepository.findAll().stream()
+          .filter(u -> "student".equalsIgnoreCase(u.getRole()) && cls.getId().equals(u.getClassId()))
+          .count();
+      totalStudents += (int) count;
+    }
+    return ResponseEntity.ok(Map.of("totalStudents", totalStudents, "totalClasses", classes.size()));
+  }
+
+  /** 获取学生对话实训的详细消息记录（每条行为记录） */
+  @GetMapping("/chat-messages/{studentId}")
+  public ResponseEntity<?> getStudentChatMessages(@PathVariable Long studentId) {
+    Optional<User> student = userRepository.findById(studentId);
+    if (student.isEmpty() || !"student".equalsIgnoreCase(student.get().getRole())) {
+      return ResponseEntity.badRequest().body(Map.of("error", "学生不存在"));
+    }
+
+    List<BehaviorRecord> allBehaviors = behaviorRecordRepository.findByUserId(studentId);
+
+    // 对话消息记录（actionType = "chat" 或 "message"）
+    List<BehaviorRecord> chatMessages = allBehaviors.stream()
+        .filter(b -> "chat".equalsIgnoreCase(b.getActionType())
+            || "message".equalsIgnoreCase(b.getActionType())
+            || "reply".equalsIgnoreCase(b.getActionType()))
+        .collect(Collectors.toList());
+
+    // 训练记录
+    List<TrainingRecord> trainingRecords = trainingRecordRepository.findByStudentId(studentId);
+
+    Map<String, Object> result = new HashMap<>();
+    result.put("studentId", studentId);
+    result.put("studentName", student.get().getFullName());
+    result.put("messages", chatMessages);
+    result.put("trainingRecords", trainingRecords);
+    result.put("totalMessages", chatMessages.size());
+    result.put("totalTrainings", trainingRecords.size());
+
+    return ResponseEntity.ok(result);
+  }
+
   @GetMapping("/me")
   public ResponseEntity<?> getTeacherProfile(@RequestHeader("X-User-Name") String username) {
     Optional<User> teacher = userRepository.findByUsername(username);
