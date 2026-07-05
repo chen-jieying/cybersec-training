@@ -98,7 +98,8 @@ public class DataInitializer {
       if (teachingResourceRepository.count() == 0) {
         teachingResourceRepository.save(new TeachingResource(null,
             "网络安全基础知识手册", "pdf", "/files/security-manual.pdf",
-            "涵盖网络安全基本概念、常见威胁和防护措施的基础教程", "基础,入门", 2L));
+            "涵盖网络安全基本概念、常见威胁和防护措施的基础教程", "基础,入门",
+            2L, "teacher", "ALL", null, 2L, "2024-01-15"));
         System.out.println("[初始化] 创建1个教学资源");
       } else {
         System.out.println("[跳过] 教学资源已存在 (" + teachingResourceRepository.count() + "个)");
