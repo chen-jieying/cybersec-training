@@ -1,4 +1,4 @@
-package com.example.cybersec.model;
+﻿package com.example.cybersec.model;
 
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 public class TrainingRecord {
 
   @Id
-  @GeneratedValue(strategy = GenerationType.AUTO)
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
   private Long studentId;
   private Long scenarioId;

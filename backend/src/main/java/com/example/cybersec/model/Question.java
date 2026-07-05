@@ -1,4 +1,4 @@
-package com.example.cybersec.model;
+﻿package com.example.cybersec.model;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -18,7 +18,7 @@ import lombok.NoArgsConstructor;
 public class Question {
 
   @Id
-  @GeneratedValue(strategy = GenerationType.AUTO)
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
   private String category;
   @Column(name = "question_text")
