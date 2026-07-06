@@ -67,10 +67,24 @@
             <el-table-column label="考试次数" width="100" align="center">
               <template #default="{ row }">{{ row.examCount || 0 }}</template>
             </el-table-column>
-            <el-table-column label="正确率" min-width="200">
+            <el-table-column label="正确率" min-width="150">
               <template #default="{ row }">
                 <el-progress :percentage="row.totalQuestions > 0 ? Math.round(row.correctQuestions / row.totalQuestions * 100) : 0"
                   :color="row.totalQuestions > 0 ? (row.correctQuestions / row.totalQuestions >= 0.6 ? '#67C23A' : '#E6A23C') : '#909399'" />
+              </template>
+            </el-table-column>
+            <el-table-column label="实训状态" width="120" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.trainingStatus === '待教师评分' ? 'warning' : row.trainingStatus === '已完成' ? 'success' : 'info'" size="small">
+                  {{ row.trainingStatus || '未开始' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="资源学习" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.resourceCount > 0 ? 'success' : 'info'" size="small">
+                  {{ row.resourceCount || 0 }}个
+                </el-tag>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="100" fixed="right">
@@ -125,48 +139,90 @@
       </div>
     </div>
 
-    <!-- 学生答题详情弹窗（不变） -->
-    <el-dialog v-model="showDetail" :title="`${detailStudent?.fullName || ''} - 答题详情`" width="80%" top="5vh" :close-on-click-modal="false">
+    <!-- 学生答题详情弹窗 -->
+    <el-dialog v-model="showDetail" :title="`${detailStudent?.fullName || ''} - 学习详情`" width="85%" top="3vh" :close-on-click-modal="false">
       <div v-loading="detailLoading">
         <el-row :gutter="16" style="margin-bottom:16px;" v-if="examDetail">
           <el-col :span="6"><el-card shadow="hover" class="stat-card"><div class="stat-value">{{ examDetail.totalExams || 0 }}</div><div class="stat-label">考试次数</div></el-card></el-col>
           <el-col :span="6"><el-card shadow="hover" class="stat-card"><div class="stat-value" style="color:#67C23A">{{ examDetail.correctQuestions || 0 }}</div><div class="stat-label">正确题数</div></el-card></el-col>
-          <el-col :span="6"><el-card shadow="hover" class="stat-card"><div class="stat-value" style="color:#F56C6C">{{ (examDetail.totalQuestions || 0) - (examDetail.correctQuestions || 0) }}</div><div class="stat-label">错误题数</div></el-card></el-col>
+          <el-col :span="6"><el-card shadow="hover" class="stat-card"><div class="stat-value" style="color:#409EFF">{{ detailTrainingRecords ? detailTrainingRecords.length : 0 }}</div><div class="stat-label">实训次数</div></el-card></el-col>
           <el-col :span="6"><el-card shadow="hover" class="stat-card"><div class="stat-value">{{ examDetail.totalQuestions > 0 ? Math.round(examDetail.correctQuestions / examDetail.totalQuestions * 100) : 0 }}%</div><div class="stat-label">正确率</div></el-card></el-col>
         </el-row>
-        <el-tabs v-model="activeSession" type="border-card" v-if="examDetail && examDetail.examSessions">
-          <el-tab-pane v-for="session in examDetail.examSessions" :key="session.sessionId"
-            :label="`第${session.stageId || '?'}关 (${session.score}分)`" :name="session.sessionId">
-            <el-table :data="session.questions" border stripe>
-              <el-table-column type="index" label="#" width="50" />
-              <el-table-column prop="questionText" label="题目" min-width="300" show-overflow-tooltip />
-              <el-table-column label="学生选择" width="100" align="center">
+        <el-tabs v-model="detailActiveTab" type="border-card">
+          <!-- 答题记录标签页 -->
+          <el-tab-pane label="闯关答题记录" name="exam">
+            <el-tabs v-model="activeSession" type="card" v-if="examDetail && examDetail.examSessions && examDetail.examSessions.length > 0">
+              <el-tab-pane v-for="session in examDetail.examSessions" :key="session.sessionId"
+                :label="`第${session.stageId || '?'}关 (${session.score}分)`" :name="session.sessionId">
+                <el-table :data="session.questions" border stripe>
+                  <el-table-column type="index" label="#" width="50" />
+                  <el-table-column prop="questionText" label="题目" min-width="300" show-overflow-tooltip />
+                  <el-table-column label="学生选择" width="100" align="center">
+                    <template #default="{ row }">
+                      <el-tag :type="row.isCorrect ? 'success' : 'danger'">{{ row.userAnswer || '-' }}</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="正确答案" width="100" align="center">
+                    <template #default="{ row }">
+                      <el-tag type="success" v-if="!row.isCorrect">{{ row.correctAnswer }}</el-tag>
+                      <span v-else>-</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="结果" width="80" align="center">
+                    <template #default="{ row }">
+                      <el-tag :type="row.isCorrect ? 'success' : 'danger'" size="small">{{ row.isCorrect ? '正确' : '错误' }}</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="score" label="得分" width="80" align="center" />
+                  <el-table-column prop="answeredAt" label="答题时间" width="180" />
+                </el-table>
+                <div v-for="item in session.questions.filter((q: any) => !q.isCorrect && q.explanation)" :key="'exp-' + item.questionId"
+                  class="exam-explanation" style="margin-top:8px; padding:12px; background:#f0f7ff; border-radius:6px;">
+                  <strong style="color:#409EFF">题目{{ item.questionId }}解析：</strong>{{ item.explanation }}
+                </div>
+              </el-tab-pane>
+            </el-tabs>
+            <el-empty v-else description="该学生暂无答题记录" />
+          </el-tab-pane>
+
+          <!-- 情景实训记录标签页 -->
+          <el-tab-pane label="情景实训记录" name="training">
+            <el-table :data="detailTrainingRecords" border stripe v-if="detailTrainingRecords && detailTrainingRecords.length > 0">
+              <el-table-column prop="scenarioTitle" label="实训场景" min-width="150" />
+              <el-table-column label="状态" width="120" align="center">
                 <template #default="{ row }">
-                  <el-tag :type="row.isCorrect ? 'success' : 'danger'">{{ row.userAnswer || '-' }}</el-tag>
+                  <el-tag :type="row.status === '待教师评分' ? 'warning' : 'success'" size="small">{{ row.status || '未评分' }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="正确答案" width="100" align="center">
-                <template #default="{ row }">
-                  <el-tag type="success" v-if="!row.isCorrect">{{ row.correctAnswer }}</el-tag>
-                  <span v-else>-</span>
-                </template>
-              </el-table-column>
-              <el-table-column label="结果" width="80" align="center">
-                <template #default="{ row }">
-                  <el-tag :type="row.isCorrect ? 'success' : 'danger'" size="small">{{ row.isCorrect ? '正确' : '错误' }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="score" label="得分" width="80" align="center" />
-              <el-table-column prop="answeredAt" label="答题时间" width="180" />
+              <el-table-column prop="score" label="教师评分" width="100" align="center" />
+              <el-table-column prop="maxScore" label="满分" width="80" align="center" />
+              <el-table-column prop="completedAt" label="完成时间" width="180" />
             </el-table>
-            <div v-for="item in session.questions.filter((q: any) => !q.isCorrect && q.explanation)" :key="'exp-' + item.questionId"
-              class="exam-explanation" style="margin-top:8px; padding:12px; background:#f0f7ff; border-radius:6px;">
-              <strong style="color:#409EFF">题目{{ item.questionId }}解析：</strong>{{ item.explanation }}
+            <el-empty v-else description="该学生暂无实训记录" />
+
+            <!-- 对话详情 -->
+            <div v-if="detailChatMessages && detailChatMessages.length > 0" style="margin-top:16px;">
+              <h4>对话记录</h4>
+              <div class="chat-detail-list">
+                <div v-for="(msg, idx) in detailChatMessages" :key="idx" class="chat-detail-item"
+                  :class="{ fromStudent: msg.actionType === 'chat', fromBot: msg.actionType === 'reply' }">
+                  <div class="chat-detail-role">{{ msg.actionType === 'chat' ? '学生' : msg.actionType === 'reply' ? 'AI教练' : '系统' }}</div>
+                  <div class="chat-detail-content">{{ msg.detail || msg.content || '' }}</div>
+                  <div class="chat-detail-time">{{ msg.createdAt }}</div>
+                </div>
+              </div>
             </div>
           </el-tab-pane>
+
+          <!-- 资源学习记录标签页 -->
+          <el-tab-pane label="资源学习记录" name="resource">
+            <el-table :data="detailResourceRecords" border stripe v-if="detailResourceRecords && detailResourceRecords.length > 0">
+              <el-table-column prop="detail" label="学习行为" min-width="300" show-overflow-tooltip />
+              <el-table-column prop="createdAt" label="时间" width="180" />
+            </el-table>
+            <el-empty v-else description="该学生暂无资源学习记录" />
+          </el-tab-pane>
         </el-tabs>
-        <el-empty v-if="!detailLoading && (!examDetail || !examDetail.examSessions || examDetail.examSessions.length === 0)"
-          description="该学生暂无答题记录" />
       </div>
       <template #footer><el-button @click="showDetail = false">关闭</el-button></template>
     </el-dialog>
@@ -192,7 +248,8 @@ import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { ArrowLeft, Plus, User, DataAnalysis } from '@element-plus/icons-vue';
 import * as echarts from 'echarts';
-import { getClassStudents, getClassStats, getStudentExamDetail, createAdminUser } from '../../api';
+import { getClassStudents, getClassStats, getStudentExamDetail, createAdminUser, getStudentChatRecords } from '../../api';
+import api from '../../api';
 
 const route = useRoute();
 const classId = computed(() => Number(route.params.classId));
@@ -206,9 +263,13 @@ const className = ref('');
 
 const showDetail = ref(false);
 const detailLoading = ref(false);
+const detailActiveTab = ref('exam');
 const activeSession = ref('');
 const examDetail = ref<any>(null);
 const detailStudent = ref<any>(null);
+const detailTrainingRecords = ref<any[]>([]);
+const detailChatMessages = ref<any[]>([]);
+const detailResourceRecords = ref<any[]>([]);
 
 const showAddStudent = ref(false);
 const studentForm = ref({ fullName: '', username: '', password: '123456' });
@@ -230,6 +291,27 @@ const loadData = async () => {
     ]);
     students.value = studentsRes.data || [];
     classStats.value = statsRes.data || { totalStudents: 0, avgScore: 0, passRate: 0, completionRate: 0 };
+
+    // 批量获取每个学生的实训和资源状态
+    const statusPromises = students.value.map(async (s: any) => {
+      try {
+        const [trainRes, resourceRes] = await Promise.all([
+          api.get(`/teacher/chat-records/${s.id}`),
+          api.get(`/teacher/resource-records/${s.id}`)
+        ]);
+        const trainingRecords = (trainRes.data?.trainingRecords || []);
+        const resourceRecords = (resourceRes.data || []);
+        s.trainingStatus = trainingRecords.length > 0
+          ? (trainingRecords[trainingRecords.length - 1]?.status || '已完成')
+          : '未开始';
+        s.resourceCount = resourceRecords.length;
+      } catch {
+        s.trainingStatus = '未知';
+        s.resourceCount = 0;
+      }
+    });
+    await Promise.all(statusPromises);
+
     if (students.value.length > 0) {
       className.value = students.value[0].grade ? `${students.value[0].grade}班` : `班级${classId.value}`;
     } else {
@@ -305,13 +387,37 @@ const viewStudentDetail = async (student: any) => {
   detailStudent.value = student;
   showDetail.value = true;
   detailLoading.value = true;
+  detailActiveTab.value = 'exam';
   examDetail.value = null;
+  detailTrainingRecords.value = [];
+  detailChatMessages.value = [];
+  detailResourceRecords.value = [];
+
   try {
-    const res = await getStudentExamDetail(student.id);
-    examDetail.value = res.data;
+    const [examRes, chatRes, resourceRes] = await Promise.all([
+      getStudentExamDetail(student.id),
+      api.get(`/teacher/chat-records/${student.id}`),
+      api.get(`/teacher/resource-records/${student.id}`)
+    ]);
+
+    examDetail.value = examRes.data || { totalExams: 0, totalQuestions: 0, correctQuestions: 0, examSessions: [] };
     if (examDetail.value?.examSessions?.length > 0) {
       activeSession.value = examDetail.value.examSessions[0].sessionId;
     }
+
+    detailTrainingRecords.value = (chatRes.data?.trainingRecords || []);
+
+    // 获取对话消息
+    try {
+      const msgRes = await getStudentChatRecords(student.id);
+      detailChatMessages.value = (msgRes.data?.chatRecords || []).slice(0, 50);
+    } catch {
+      detailChatMessages.value = [];
+    }
+
+    detailResourceRecords.value = (resourceRes.data || []).filter((r: any) =>
+      r.actionType === 'resource_view' || r.actionType === 'resource_download'
+    );
   } catch {
     examDetail.value = { totalExams: 0, totalQuestions: 0, correctQuestions: 0, examSessions: [] };
   } finally {
@@ -389,4 +495,12 @@ onMounted(loadData);
 .summary-label { font-size: 14px; color: #909399; margin-top: 8px; }
 
 .exam-explanation { margin-bottom: 8px; font-size: 13px; line-height: 1.8; }
+
+.chat-detail-list { max-height: 400px; overflow-y: auto; }
+.chat-detail-item { padding: 10px 14px; margin-bottom: 8px; border-radius: 8px; background: #f5f7fa; }
+.chat-detail-item.fromStudent { background: #ecf5ff; border-left: 3px solid #409EFF; }
+.chat-detail-item.fromBot { background: #f0f9eb; border-left: 3px solid #67C23A; }
+.chat-detail-role { font-size: 12px; color: #909399; margin-bottom: 4px; }
+.chat-detail-content { font-size: 13px; line-height: 1.7; word-break: break-word; }
+.chat-detail-time { font-size: 11px; color: #c0c4cc; margin-top: 4px; text-align: right; }
 </style>

@@ -95,20 +95,28 @@ const previewResource = async (row: any) => {
   previewTitle.value = row.title;
   previewType.value = row.resourceType || 'doc';
   previewLoading.value = true;
-
-  if (previewType.value === 'pdf') {
-    previewUrl.value = `/api/resource/preview/${row.id}`;
-    setTimeout(() => { previewLoading.value = false; }, 2000);
-  } else {
-    try {
-      const res = await previewApi(row.id);
-      previewHtml.value = typeof res.data === 'string' ? res.data : '';
-    } catch (e) {
-      previewHtml.value = `<html><body style="padding:40px;text-align:center;"><h2>${row.title}</h2><p>${row.description || ''}</p></body></html>`;
-    }
-    previewLoading.value = false;
-  }
   showPreview.value = true;
+
+  try {
+    const res = await previewApi(row.id);
+    const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/octet-stream' });
+    const url = window.URL.createObjectURL(blob);
+
+    if (previewType.value === 'pdf') {
+      // 用 blob URL 在新窗口打开PDF，避免iframe跨域问题
+      previewUrl.value = url;
+    } else {
+      // 非PDF用iframe展示HTML
+      const text = await blob.text();
+      previewHtml.value = text;
+    }
+  } catch (e) {
+    if (previewType.value === 'pdf') {
+      previewUrl.value = '';
+    }
+    previewHtml.value = `<html><body style="padding:40px;text-align:center;"><h2>${row.title}</h2><p>${row.description || ''}</p><p style="color:#909399">预览加载失败，请尝试下载后查看</p></body></html>`;
+  }
+  previewLoading.value = false;
 };
 
 const handleDownload = async (row: any) => {

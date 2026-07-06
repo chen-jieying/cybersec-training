@@ -33,10 +33,11 @@
       </div>
 
       <div class="submit-area">
-        <el-button type="primary" size="large" @click="submitExam" :disabled="answeredCount < questions.length" :loading="submitting">
+        <el-button type="primary" size="large" @click="handleSubmit" :disabled="!canSubmit" :loading="submitting">
           <el-icon><Finished /></el-icon> 提交试卷
         </el-button>
-        <span v-if="answeredCount < questions.length" class="submit-hint">还有 {{ questions.length - answeredCount }} 题未作答</span>
+        <span v-if="!canSubmit && questions.length > 0" class="submit-hint">还有 {{ questions.length - answeredCount }} 题未作答</span>
+        <span v-if="questions.length === 0 && !loading" class="submit-hint" style="color:#F56C6C">题目数据加载失败，请刷新页面</span>
       </div>
     </el-card>
   </div>
@@ -47,7 +48,8 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Finished } from '@element-plus/icons-vue';
-import { getStageQuestions, submitExam } from '../../api';
+import { getStageQuestions } from '../../api';
+import api from '../../api';
 
 const route = useRoute();
 const router = useRouter();
@@ -62,34 +64,69 @@ const stageName = computed(() => stageNames[stageId.value] || `第${stageId.valu
 const answers = ref<Record<number, string>>({});
 const totalScore = computed(() => questions.value.reduce((sum, q) => sum + (q.score || 0), 0));
 const answeredCount = computed(() => questions.value.filter(q => answers.value[q.id]).length);
+const canSubmit = computed(() => questions.value.length > 0 && answeredCount.value >= questions.value.length);
 
 const loadQuestions = async () => {
   loading.value = true;
   try {
+    console.log('[Exam] Loading questions for stage:', stageId.value);
     const res = await getStageQuestions(stageId.value);
     questions.value = res.data || [];
-  } catch {
-    ElMessage.warning('加载题目失败，请刷新页面重试');
+    console.log('[Exam] Loaded questions:', questions.value.length);
+    if (questions.value.length === 0) {
+      ElMessage.warning('该关卡暂无题目');
+    }
+  } catch (e: any) {
+    console.error('[Exam] Failed to load questions:', e);
+    ElMessage.error('加载题目失败，请刷新页面重试');
   } finally {
     loading.value = false;
   }
 };
 
-const submitExamHandler = async () => {
+const handleSubmit = async () => {
+  console.log('[Exam] handleSubmit called, questions:', questions.value.length, 'answered:', answeredCount.value);
+
+  // 检查是否有题目
+  if (questions.value.length === 0) {
+    ElMessage.warning('没有可提交的题目');
+    return;
+  }
+
+  // 检查是否全部作答
+  if (answeredCount.value < questions.value.length) {
+    ElMessage.warning(`请完成所有题目后再提交（已答${answeredCount.value}/${questions.value.length}）`);
+    return;
+  }
+
+  // 确认提交
   try {
     await ElMessageBox.confirm('确定要提交试卷吗？提交后将自动判分。', '提交确认', {
-      type: 'warning', confirmButtonText: '确定提交', cancelButtonText: '继续检查'
+      type: 'warning',
+      confirmButtonText: '确定提交',
+      cancelButtonText: '继续检查'
     });
-  } catch { return; }
+  } catch {
+    console.log('[Exam] User cancelled submission');
+    return;
+  }
 
   submitting.value = true;
+  console.log('[Exam] Submitting exam...');
+
   try {
     const answerList = questions.value.map(q => ({
       questionId: q.id,
       selectedOption: answers.value[q.id] || ''
     }));
+    console.log('[Exam] Answer list:', JSON.stringify(answerList));
 
-    const res = await submitExam({ stageId: stageId.value, answers: answerList });
+    const res = await api.post('/student/exam/submit', {
+      stageId: stageId.value,
+      answers: answerList
+    });
+    console.log('[Exam] Submit response:', res.data);
+
     const data = res.data;
 
     // 存储结果用于结果页展示
@@ -104,7 +141,9 @@ const submitExamHandler = async () => {
     ElMessage.success(`试卷提交成功！得分：${data.score}/${data.totalScore}`);
     router.push(`/student/result/${stageId.value}`);
   } catch (err: any) {
-    ElMessage.error(err?.response?.data?.error || '提交失败，请重试');
+    console.error('[Exam] Submit failed:', err);
+    const errorMsg = err?.response?.data?.error || err?.response?.data?.message || err?.message || '提交失败，请重试';
+    ElMessage.error(errorMsg);
   } finally {
     submitting.value = false;
   }
