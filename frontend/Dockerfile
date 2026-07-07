@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+RUN npx vite build
 
 FROM nginx:1.25-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
