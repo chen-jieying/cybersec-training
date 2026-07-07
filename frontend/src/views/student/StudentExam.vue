@@ -44,7 +44,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Finished } from '@element-plus/icons-vue';
@@ -61,9 +61,9 @@ const questions = ref<any[]>([]);
 const stageNames = ['', '第一关：安全基础', '第二关：钓鱼防护', '第三关：社交工程'];
 const stageName = computed(() => stageNames[stageId.value] || `第${stageId.value}关`);
 
-const answers = ref<Record<number, string>>({});
+const answers = reactive<Record<number, string>>({});
 const totalScore = computed(() => questions.value.reduce((sum, q) => sum + (q.score || 0), 0));
-const answeredCount = computed(() => questions.value.filter(q => answers.value[q.id]).length);
+const answeredCount = computed(() => questions.value.filter(q => answers[q.id]).length);
 const canSubmit = computed(() => questions.value.length > 0 && answeredCount.value >= questions.value.length);
 
 const loadQuestions = async () => {
@@ -117,7 +117,7 @@ const handleSubmit = async () => {
   try {
     const answerList = questions.value.map(q => ({
       questionId: q.id,
-      selectedOption: answers.value[q.id] || ''
+      selectedOption: answers[q.id] || ''
     }));
     console.log('[Exam] Answer list:', JSON.stringify(answerList));
 
