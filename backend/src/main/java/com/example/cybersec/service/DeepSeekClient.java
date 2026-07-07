@@ -1,10 +1,13 @@
 package com.example.cybersec.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import javax.annotation.PostConstruct;
 import java.util.*;
 
 /**
@@ -14,6 +17,8 @@ import java.util.*;
  */
 @Service
 public class DeepSeekClient {
+
+  private static final Logger log = LoggerFactory.getLogger(DeepSeekClient.class);
 
   @Value("${deepseek.api-key:}")
   private String apiKey;
@@ -28,6 +33,19 @@ public class DeepSeekClient {
   private String baseUrl;
 
   private final RestTemplate restTemplate = new RestTemplate();
+
+  @PostConstruct
+  public void init() {
+    if (isAvailable()) {
+      log.info("DeepSeek AI客户端初始化成功，模型: {}，基站: {}，API Key: {}...{}",
+          model, baseUrl,
+          apiKey.substring(0, Math.min(6, apiKey.length())),
+          apiKey.substring(Math.max(0, apiKey.length() - 4)));
+    } else {
+      log.warn("DeepSeek AI客户端未配置或已禁用 (enabled={}, hasKey={})，将使用关键词匹配模式",
+          enabled, apiKey != null && !apiKey.isEmpty());
+    }
+  }
 
   public boolean isAvailable() {
     return enabled && apiKey != null && !apiKey.isEmpty();
@@ -81,7 +99,7 @@ public class DeepSeekClient {
       }
       return null;
     } catch (Exception e) {
-      System.err.println("[DeepSeek] API call failed: " + e.getMessage());
+      log.warn("DeepSeek API调用失败: {}，将回退到关键词匹配", e.getMessage());
       return null;
     }
   }
