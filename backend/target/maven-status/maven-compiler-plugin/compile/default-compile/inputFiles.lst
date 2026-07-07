@@ -1,9 +1,11 @@
 C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\model\ScenarioDialogue.java
 C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\controller\UserController.java
+C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\config\CorsConfig.java
 C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\controller\StatisticsController.java
 C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\controller\ResourceController.java
 C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\controller\ChatController.java
 C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\model\BehaviorRecord.java
+C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\model\TrainingTask.java
 C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\repository\TrainingRecordRepository.java
 C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\repository\ScenarioScriptRepository.java
 C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\model\ScenarioScript.java
@@ -17,6 +19,7 @@ C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cyberse
 C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\model\Question.java
 C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\config\DataInitializer.java
 C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\controller\TeacherController.java
+C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\repository\TrainingTaskRepository.java
 C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\repository\ScenarioDialogueRepository.java
 C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\repository\SchoolClassRepository.java
 C:\Users\陈洁莹\Desktop\学习\学年设计3\backend\src\main\java\com\example\cybersec\repository\ExamAnswerRepository.java

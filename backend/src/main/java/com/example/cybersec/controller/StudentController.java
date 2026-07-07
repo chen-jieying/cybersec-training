@@ -130,11 +130,24 @@ public class StudentController {
       List<Question> qs = entry.getValue();
       if (qs.isEmpty()) continue;
 
-      // 检查是否已解锁
+      // 检查是否已解锁（成绩≥60%才解锁）
       boolean unlocked = stageId == 1L; // 第一关默认解锁
       if (stageId > 1L) {
-        // 前一关有答题记录即解锁
-        unlocked = examAnswerRepository.countByStudentIdAndStageId(studentId, stageId - 1) > 0;
+        // 计算前一关的最高得分率
+        List<ExamAnswer> prevAnswers = examAnswerRepository.findByStudentIdAndStageId(studentId, stageId - 1);
+        int prevTotalScore = prevAnswers.stream()
+            .filter(a -> a.getScore() != null)
+            .mapToInt(a -> {
+              // 根据每题得分推算该题满分
+              return a.getScore();
+            }).sum();
+        // 获取前一关的题目总分
+        List<Question> prevQuestions = questionRepository.findAll().stream()
+            .filter(q -> getCategoryByStage(stageId - 1).equals(q.getCategory()))
+            .collect(Collectors.toList());
+        int prevFullScore = prevQuestions.stream().mapToInt(q -> q.getScore() != null ? q.getScore() : 0).sum();
+        double passRate = prevFullScore > 0 ? (double) prevTotalScore / prevFullScore : 0;
+        unlocked = passRate >= 0.6;
       }
 
       // 计算该关卡最佳得分
@@ -366,5 +379,16 @@ public class StudentController {
     record.setCompletedAt(LocalDateTime.now().toString());
     TrainingRecord saved = trainingRecordRepository.save(record);
     return ResponseEntity.ok(saved);
+  }
+
+  // ==================== 辅助方法 ====================
+
+  private String getCategoryByStage(Long stageId) {
+    switch (stageId.intValue()) {
+      case 1: return "基础知识";
+      case 2: return "钓鱼防护";
+      case 3: return "社交工程";
+      default: return "";
+    }
   }
 }

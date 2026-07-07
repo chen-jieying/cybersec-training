@@ -390,6 +390,18 @@ public class TeacherController {
     return ResponseEntity.ok(result);
   }
 
+  /** 获取学生资源学习记录 */
+  @GetMapping("/resource-records/{studentId}")
+  public ResponseEntity<?> getStudentResourceRecords(@PathVariable Long studentId) {
+    List<BehaviorRecord> records = behaviorRecordRepository.findByUserId(studentId);
+    List<BehaviorRecord> resourceRecords = records.stream()
+        .filter(b -> "resource_view".equalsIgnoreCase(b.getActionType())
+            || "resource_download".equalsIgnoreCase(b.getActionType())
+            || "resource_preview".equalsIgnoreCase(b.getActionType()))
+        .collect(Collectors.toList());
+    return ResponseEntity.ok(resourceRecords);
+  }
+
   @GetMapping("/me")
   public ResponseEntity<?> getTeacherProfile(@RequestHeader("X-User-Name") String username) {
     Optional<User> teacher = userRepository.findByUsername(username);
@@ -439,6 +451,9 @@ public class TeacherController {
     if (teacher.isEmpty()) return ResponseEntity.badRequest().body(Map.of("error", "教师不存在"));
 
     TrainingTask task = new TrainingTask();
+    if (body.get("classId") == null || body.get("scenarioId") == null) {
+      return ResponseEntity.badRequest().body(Map.of("error", "缺少必填参数 classId 或 scenarioId"));
+    }
     task.setClassId(Long.valueOf(body.get("classId").toString()));
     task.setScenarioId(Long.valueOf(body.get("scenarioId").toString()));
     task.setTitle(body.get("title") != null ? body.get("title").toString() : "");

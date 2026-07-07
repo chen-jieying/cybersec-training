@@ -3,9 +3,11 @@ package com.example.cybersec.controller;
 import com.example.cybersec.model.TeachingResource;
 import com.example.cybersec.model.User;
 import com.example.cybersec.model.SchoolClass;
+import com.example.cybersec.model.BehaviorRecord;
 import com.example.cybersec.repository.TeachingResourceRepository;
 import com.example.cybersec.repository.UserRepository;
 import com.example.cybersec.repository.SchoolClassRepository;
+import com.example.cybersec.repository.BehaviorRecordRepository;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -22,7 +24,7 @@ import java.util.stream.Collectors;
 
 /**
  * 教学资源控制器 - 支持文件上传、预览、下载
- * 支持按用户角色和班级可见性过滤
+ * 支持按用户角色和班级可见性过滤，记录学生学习行为
  */
 @RestController
 @RequestMapping("/api/resource")
@@ -31,13 +33,16 @@ public class ResourceController {
   private final TeachingResourceRepository resourceRepository;
   private final UserRepository userRepository;
   private final SchoolClassRepository schoolClassRepository;
+  private final BehaviorRecordRepository behaviorRecordRepository;
 
   public ResourceController(TeachingResourceRepository resourceRepository,
                             UserRepository userRepository,
-                            SchoolClassRepository schoolClassRepository) {
+                            SchoolClassRepository schoolClassRepository,
+                            BehaviorRecordRepository behaviorRecordRepository) {
     this.resourceRepository = resourceRepository;
     this.userRepository = userRepository;
     this.schoolClassRepository = schoolClassRepository;
+    this.behaviorRecordRepository = behaviorRecordRepository;
   }
 
   /**
@@ -96,7 +101,9 @@ public class ResourceController {
    * 预览资源 - 生成一个可预览的PDF内容
    */
   @GetMapping("/preview/{id}")
-  public void previewResource(@PathVariable Long id, HttpServletResponse response) throws IOException {
+  public void previewResource(@PathVariable Long id,
+                               @RequestHeader(value = "X-User-Name", required = false) String username,
+                               HttpServletResponse response) throws IOException {
     Optional<TeachingResource> resourceOpt = resourceRepository.findById(id);
     if (resourceOpt.isEmpty()) {
       response.setStatus(404);
@@ -105,6 +112,7 @@ public class ResourceController {
     }
 
     TeachingResource resource = resourceOpt.get();
+    recordResourceAccess(username, resource, "preview");
     String type = resource.getResourceType();
 
     if ("pdf".equalsIgnoreCase(type)) {
@@ -134,7 +142,9 @@ public class ResourceController {
    * 下载教学资源文件
    */
   @GetMapping("/download/{id}")
-  public void downloadResource(@PathVariable Long id, HttpServletResponse response) throws IOException {
+  public void downloadResource(@PathVariable Long id,
+                                @RequestHeader(value = "X-User-Name", required = false) String username,
+                                HttpServletResponse response) throws IOException {
     Optional<TeachingResource> resourceOpt = resourceRepository.findById(id);
     if (resourceOpt.isEmpty()) {
       response.setStatus(404);
@@ -144,6 +154,7 @@ public class ResourceController {
     }
 
     TeachingResource resource = resourceOpt.get();
+    recordResourceAccess(username, resource, "download");
     String title = resource.getTitle() != null ? resource.getTitle() : "download";
     String type = resource.getResourceType();
     String fileName = title + "." + (type != null ? type : "txt");
@@ -325,6 +336,34 @@ public class ResourceController {
     sb.append("本资源由网络安全素养实训平台生成\n");
     sb.append("仅供教学使用，请勿外传\n");
     return sb.toString();
+  }
+
+  /** 记录学生资源学习行为 */
+  private void recordResourceAccess(String username, TeachingResource resource, String action) {
+    if (username == null || username.isEmpty()) return;
+    Optional<User> userOpt = userRepository.findByUsername(username);
+    if (userOpt.isEmpty()) return;
+    User user = userOpt.get();
+    if (!"STUDENT".equalsIgnoreCase(user.getRole())) return;
+
+    BehaviorRecord record = new BehaviorRecord();
+    record.setUserId(user.getId());
+    record.setActionType("resource_" + action);
+    String detail;
+    switch (action) {
+      case "preview":
+        detail = "预览教学资源：" + resource.getTitle();
+        break;
+      case "download":
+        detail = "下载教学资源：" + resource.getTitle();
+        break;
+      default:
+        detail = "浏览教学资源：" + resource.getTitle();
+        break;
+    }
+    record.setDetail(detail);
+    record.setCreatedAt(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+    behaviorRecordRepository.save(record);
   }
 }
 
