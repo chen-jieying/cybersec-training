@@ -64,7 +64,7 @@ export function getAdminClasses() {
 }
 
 export function createClass(data: any) {
-  return api.post('/admin/classes', data);
+  return api.post('/teacher/classes', data);
 }
 
 export function updateClass(id: number, data: any) {

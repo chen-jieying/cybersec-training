@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -32,15 +33,25 @@ public class DeepSeekClient {
   @Value("${deepseek.base-url:https://api.deepseek.com/v1}")
   private String baseUrl;
 
-  private final RestTemplate restTemplate = new RestTemplate();
+  private final RestTemplate restTemplate;
+
+  public DeepSeekClient() {
+    this.restTemplate = new RestTemplate();
+    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+    factory.setConnectTimeout(15000);  // 连接超时15秒
+    factory.setReadTimeout(60000);     // 读取超时60秒（AI响应可能较慢）
+    this.restTemplate.setRequestFactory(factory);
+  }
 
   @PostConstruct
   public void init() {
     if (isAvailable()) {
       log.info("DeepSeek AI客户端初始化成功，模型: {}，基站: {}，API Key: {}...{}",
           model, baseUrl,
-          apiKey.substring(0, Math.min(6, apiKey.length())),
-          apiKey.substring(Math.max(0, apiKey.length() - 4)));
+          apiKey != null && apiKey.length() > 6 ? apiKey.substring(0, Math.min(6, apiKey.length())) : "***",
+          apiKey != null && apiKey.length() > 4 ? apiKey.substring(Math.max(0, apiKey.length() - 4)) : "***");
+      // 启动时验证连接
+      verifyConnection();
     } else {
       log.warn("DeepSeek AI客户端未配置或已禁用 (enabled={}, hasKey={})，将使用关键词匹配模式",
           enabled, apiKey != null && !apiKey.isEmpty());
@@ -49,6 +60,78 @@ public class DeepSeekClient {
 
   public boolean isAvailable() {
     return enabled && apiKey != null && !apiKey.isEmpty();
+  }
+
+  /**
+   * 检测DeepSeek API连通性和账户余额状态
+   * @return 状态信息
+   */
+  public Map<String, Object> checkHealth() {
+    Map<String, Object> result = new HashMap<>();
+    result.put("configured", enabled && apiKey != null && !apiKey.isEmpty());
+    result.put("model", model);
+    result.put("baseUrl", baseUrl);
+
+    if (!isAvailable()) {
+      result.put("status", "unavailable");
+      result.put("message", "DeepSeek API未配置或已禁用，API Key为空");
+      return result;
+    }
+
+    try {
+      // 发送一个简单的测试请求检测连通性
+      String url = baseUrl + "/chat/completions";
+      List<Map<String, String>> testMessages = new ArrayList<>();
+      Map<String, String> testMsg = new HashMap<>();
+      testMsg.put("role", "user");
+      testMsg.put("content", "ping");
+      testMessages.add(testMsg);
+
+      Map<String, Object> requestBody = new HashMap<>();
+      requestBody.put("model", model);
+      requestBody.put("messages", testMessages);
+      requestBody.put("max_tokens", 5);
+
+      HttpHeaders headers = new HttpHeaders();
+      headers.setContentType(MediaType.APPLICATION_JSON);
+      headers.setBearerAuth(apiKey);
+
+      HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+
+      RestTemplate shortTimeoutTemplate = new RestTemplate();
+      SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+      factory.setConnectTimeout(10000);
+      factory.setReadTimeout(15000);
+      shortTimeoutTemplate.setRequestFactory(factory);
+
+      ResponseEntity<Map> response = shortTimeoutTemplate.postForEntity(url, request, Map.class);
+
+      if (response.getStatusCode() == HttpStatus.OK) {
+        result.put("status", "healthy");
+        result.put("message", "DeepSeek API连接正常");
+      } else {
+        result.put("status", "error");
+        result.put("message", "DeepSeek API返回异常状态: " + response.getStatusCode());
+      }
+    } catch (Exception e) {
+      String msg = e.getMessage();
+      result.put("status", "error");
+      if (msg != null && msg.contains("401")) {
+        result.put("message", "API Key无效或已过期，请检查DeepSeek账户");
+      } else if (msg != null && msg.contains("402")) {
+        result.put("message", "DeepSeek账户余额不足，请充值后再使用");
+      } else if (msg != null && msg.contains("429")) {
+        result.put("message", "API请求频率超限，请稍后再试");
+      } else {
+        result.put("message", "无法连接DeepSeek API: " + (msg != null ? msg : "未知错误"));
+      }
+    }
+    return result;
+  }
+
+  private void verifyConnection() {
+    Map<String, Object> health = checkHealth();
+    log.info("DeepSeek连接检测结果: status={}, message={}", health.get("status"), health.get("message"));
   }
 
   /**

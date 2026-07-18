@@ -77,6 +77,12 @@ public class TeacherController {
     return ResponseEntity.ok(result);
   }
 
+  /** 创建班级 */
+  @PostMapping("/classes")
+  public SchoolClass createClass(@RequestBody SchoolClass schoolClass) {
+    return schoolClassRepository.save(schoolClass);
+  }
+
   /** 获取全部班级（管理员视角） */
   @GetMapping("/all-classes")
   public List<SchoolClass> getAllClasses() {

@@ -1,16 +1,20 @@
 package com.example.cybersec.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 
 /**
  * AI情景仿真实训对话服务
- * 优先使用DeepSeek API（免费），不可用时回退到关键词匹配
+ * 优先使用DeepSeek API，不可用时回退到关键词匹配
  * 不做自动评分，评分由教师端完成
  */
 @Service
 public class ChatService {
+
+  private static final Logger log = LoggerFactory.getLogger(ChatService.class);
 
   private final DeepSeekClient deepSeekClient;
 
@@ -103,6 +107,20 @@ public class ChatService {
     conversationHistory.remove(userKey);
   }
 
+  /**
+   * DeeSeek API是否可用
+   */
+  public boolean isDeepSeekAvailable() {
+    return deepSeekClient.isAvailable();
+  }
+
+  /**
+   * 获取DeepSeek健康状态
+   */
+  public Map<String, Object> getDeepSeekHealth() {
+    return deepSeekClient.checkHealth();
+  }
+
   // ==================== 核心对话逻辑 ====================
 
   private String generateSmartReply(String message, String sceneType, int turnNumber, String userKey) {
@@ -146,7 +164,13 @@ public class ChatService {
       }
 
       String aiReply = deepSeekClient.chat(systemPrompt, requestMessages);
+      // 过滤掉异常响应内容，返回 null 以触发回退逻辑
+      if (isInvalidReply(aiReply)) {
+        return null;
+      }
       if (aiReply != null && !aiReply.isEmpty()) {
+        // 后处理过滤：如果AI仍然泄露答案，用引导性问题替换
+        aiReply = filterRevealingContent(aiReply, sceneType);
         Map<String, String> assistantMsg = new HashMap<>();
         assistantMsg.put("role", "assistant");
         assistantMsg.put("content", aiReply);
@@ -159,54 +183,115 @@ public class ChatService {
     return null;
   }
 
+  private boolean isInvalidReply(String reply) {
+    if (reply == null || reply.trim().isEmpty()) return true;
+    String lower = reply.toLowerCase();
+    return lower.contains("internal server error")
+        || lower.contains("service unavailable")
+        || lower.contains("bad gateway")
+        || lower.contains("gateway timeout")
+        || lower.contains("error:");
+  }
+
+  /**
+   * 过滤AI回复中的泄露性内容（兜底安全网）
+   * 如果AI仍然说了不该说的话，用引导提问替换
+   */
+  private String filterRevealingContent(String reply, String sceneType) {
+    String lower = reply.toLowerCase();
+
+    // 检测泄露性关键词
+    boolean hasLeak = false;
+    String[] leakWords = {
+      "骗子", "诈骗", "骗局", "被骗", "骗术", "钓鱼", "钓饵",
+      "正确的做法", "你应该", "你应当", "我建议你", "请记住", "一定要",
+      "这是假的", "只是模拟", "好在", "幸好", "幸亏",
+      "以下是", "以下几点", "防范建议", "安全提示"
+    };
+    for (String word : leakWords) {
+      if (reply.contains(word)) {
+        hasLeak = true;
+        break;
+      }
+    }
+
+    // 也检测"这是一个"开头的揭露句式
+    if (!hasLeak && reply.contains("这是一个")) {
+      hasLeak = true;
+    }
+
+    if (!hasLeak) {
+      return reply; // 没有泄露，直接返回
+    }
+
+    // AI泄露了答案，使用引导提问替代
+    log.warn("[ChatService] AI回应包含泄露内容，已过滤。原文片段: {}", 
+        reply.substring(0, Math.min(100, reply.length())));
+    
+    List<String> guides = new ArrayList<>();
+    guides.add("嗯，你的回答我看到了。不过我想再问问你：你觉得对方说的和平时生活中遇到的情况有什么不同？再仔细想想，然后告诉我你的判断。");
+    guides.add("有个角度你想过没有——如果换做是你爸妈或老师接到这样的电话，他们会怎么处理？你为什么这样觉得？");
+    guides.add("先不急着行动，我们退一步想想：对方说了那么多，最让你觉得'有点奇怪'的是哪一点？能指出来吗？");
+    guides.add("你刚才的反应挺有意思的。那我问一个简单的问题：如果对方是真的，他们会用什么方式来证明？如果是假的呢？");
+    guides.add("我们来玩个游戏吧：你来找找对方话里的可疑点，至少找出两个。找出来之后跟我说说，我们一起看看。");
+    
+    int idx = Math.abs(reply.hashCode()) % guides.size();
+    return guides.get(idx);
+  }
+
   private String buildSystemPrompt(String sceneType, int turnNumber) {
     StringBuilder prompt = new StringBuilder();
-    prompt.append("你是一个网络安全素养培训的AI教练，正在与一名初中生进行情景仿真实训。\n\n");
+    prompt.append("你是一个网络安全实训的引导教练，正在与一名初中生进行情景对话。\n");
+    prompt.append("这是一场角色扮演实训，你的任务是用提问引导学生自己发现风险和应对方法。\n\n");
 
-    prompt.append("## 你的角色\n");
-    prompt.append("你同时扮演两个角色：\n");
-    prompt.append("1. 诈骗者/骗子：模拟真实的网络诈骗场景，向学生发起诈骗\n");
-    prompt.append("2. AI教练：在学生回答后，分析他的表现并给出指导\n\n");
-
-    prompt.append("## 场景类型\n");
+    prompt.append("## 当前模拟的场景\n");
     switch (sceneType) {
       case "phishing":
-        prompt.append("当前场景：钓鱼邮件/短信诈骗。冒充银行或快递客服，诱骗点击链接或提供个人信息。\n");
+        prompt.append("冒充银行客服，以账户异常为由诱导学生点击链接或提供个人信息。\n");
         break;
       case "account":
-        prompt.append("当前场景：账户安全诈骗。谎称账户被盗，要求提供验证码或密码。\n");
+        prompt.append("冒充安全中心，以异地登录为由要求学生提供验证码。\n");
         break;
       case "fraud":
-        prompt.append("当前场景：冒充公检法诈骗。冒充警察或检察官，声称涉嫌犯罪要求配合调查。\n");
+        prompt.append("冒充公检法人员，以涉嫌犯罪为由要求学生转账。\n");
+        break;
+      case "social":
+        prompt.append("冒充同龄网友，通过聊天索取个人信息、手机号、验证码或照片。\n");
         break;
       default:
-        prompt.append("当前场景：网络安全诈骗防范实训。\n");
+        prompt.append("模拟常见的网络威胁场景，帮助学生学习识别和应对。\n");
     }
 
-    prompt.append("\n## 对话规则\n");
-    prompt.append("1. 第1轮：以骗子身份提出诈骗请求，语气逼真有紧迫感\n");
-    prompt.append("2. 学生回答后：切换到AI教练身份，分析学生的应对并给出反馈\n");
-    prompt.append("3. 如果学生展现出安全意识（拒绝透露信息、要求核实等）：肯定他做得好，具体说明好在哪里\n");
-    prompt.append("4. 如果学生可能被骗（透露信息、点击链接、同意转账等）：");
-    prompt.append("   先揭示这是一个骗局，然后详细说明被骗的原因和后果，");
-    prompt.append("   再教他正确防范方法（不透露信息、挂断核实、报警等），最后给一次重新应对的机会\n");
-    prompt.append("5. 如果学生犹豫不决：继续施压，增加紧迫感，测试底线\n");
-    prompt.append("6. 当学生连续展现出安全意识后，结束对话并肯定他\n\n");
+    prompt.append("\n## 核心规则——绝对遵守\n");
+    prompt.append("1. 你的唯一角色是提问引导者，不是答案提供者\n");
+    prompt.append("2. 永远只用提问来回应学生，绝不直接说任何结论或建议\n");
+    prompt.append("3. 你是钓鱼的，你是诱导的——保持你的角色，不要说破\n\n");
 
-    prompt.append("## 重要要求\n");
-    prompt.append("- 不要给出评分或分数\n");
-    prompt.append("- 当学生被骗时，必须详细解释防范方法（至少3条具体建议）\n");
-    prompt.append("- 当学生表现好时，具体说明好在哪里（至少2个要点）\n");
-    prompt.append("- 对话轮次控制在4-6轮\n");
-    prompt.append("- 回复控制在200-400字\n");
-    prompt.append("- 使用适合初中生的语言，通俗易懂\n\n");
+    prompt.append("## 禁止说的话（违反任何一条都算失败）\n");
+    prompt.append("- 禁止使用\"骗子\"\"诈骗\"\"骗局\"\"被骗\"\"危险\"\"钓鱼\"等词\n");
+    prompt.append("- 禁止说\"正确的做法是\"\"你应该\"\"我建议你\"\"请记住\"\n");
+    prompt.append("- 禁止说\"这是一个XX场景/案例\"\"这是假的\"\"这只是模拟\"\n");
+    prompt.append("- 禁止列出任何建议清单或知识点\n");
+    prompt.append("- 禁止评价学生的表现（不说\"你做得对\"\"答得好\"\"有安全意识\"）\n");
+    prompt.append("- 禁止说\"好在\"\"幸好\"\"如果……就会……\"等事后分析\n\n");
 
-    prompt.append("当前对话轮次：第").append(turnNumber).append("轮\n");
+    prompt.append("## 正确示范——面对学生的各种回答，AI只这样回复：\n");
+    prompt.append("场景：冒充银行索要密码\n");
+    prompt.append("学生说\"好的我告诉你密码是123456\" → AI回复：\"嗯，你觉得把这么重要的密码告诉电话里的陌生人，这件事你有没有再想一想？\"\n");
+    prompt.append("学生说\"我不给！你是骗子！\" → AI回复：\"哦？你说得挺坚决的。不过我想知道，你是怎么判断对方身份的真实性的？\"\n");
+    prompt.append("学生说\"我先问问我爸妈\" → AI回复：\"这个想法不错，不过你打算怎么跟爸妈描述这件事？\"\n");
+    prompt.append("学生说\"你凭什么证明你是银行的\" → AI回复：\"（以诈骗者身份继续）我是银行客服工号8823，你可以在官网查询。现在情况紧急，请你配合。\"\n\n");
 
-    int remaining = 6 - turnNumber;
-    if (remaining <= 2) {
-      prompt.append("提示：再对话").append(remaining).append("轮后结束实训，给学生做一个总结。\n");
+    prompt.append("## 对话节奏\n");
+    if (turnNumber == 1) {
+      prompt.append("第1轮：以诈骗者身份发起攻击，语气逼真。开场后加一句\"你会怎么做？\"\n");
+    } else {
+      prompt.append("当前是第").append(turnNumber).append("轮。");
+      prompt.append("先以1-2句引导提问回应学生，再切换到诈骗者角度继续施压。\n");
+      prompt.append("提问示例：\"你觉得……？\"\"你有没有留意到……？\"\"换做是你朋友，你会怎么说？\"\n");
     }
+    prompt.append("每轮总字数控制在100-200字。\n");
+    prompt.append("最后几轮务必用提问帮学生自己归纳总结，而不是你替他总结。\n");
 
     return prompt.toString();
   }
@@ -214,24 +299,15 @@ public class ChatService {
   private String getOpeningMessage(String sceneType) {
     switch (sceneType) {
       case "phishing":
-        return "【AI教练】你好！现在开始钓鱼邮件防范实训。\n\n" +
-            "（假装是银行客服）您好，我是XX银行的风险管控中心，系统监控到您的银行卡在今天下午3点15分有一笔境外消费8500元，" +
-            "如果不是您本人操作，请立即点击以下链接进行账户冻结：http://fake-bank-verify.com。请在10分钟内处理，否则将被视为本人操作！\n\n" +
-            "（现在请以你的真实想法回答，你会怎么做？）";
+        return "您好，我是XX银行的客服人员。我们检测到您的账户存在异常登录，需要您立即验证身份。请告诉我您的银行卡号和密码。";
       case "account":
-        return "【AI教练】你好！现在开始账户安全防范实训。\n\n" +
-            "（假装是安全中心）警告！检测到您的微信账户在陌生设备（型号：iPhone 15 Pro Max，地点：XX市）上登录。" +
-            "如果不是您本人操作，请立即提供手机验证码，我们将为您锁定账户防止资金损失。系统已向您手机发送了验证码，请马上告诉我！\n\n" +
-            "（你会怎么做？）";
+        return "警告！检测到您的账户在异地登录。如果不是本人操作，请立即提供手机验证码来锁定账户。";
       case "fraud":
-        return "【AI教练】你好！现在开始冒充公检法防范实训。\n\n" +
-            "（假装是刑警）您好，我是XX市公安局刑警支队王警官，警号058237。您的身份证号码被他人冒用，涉嫌参与一起重大网络诈骗案。" +
-            "为证明您的清白，需要您配合调查。请现在将名下所有资金转入我们指定的安全核查账户。" +
-            "如果天黑前不完成，我们将发出逮捕令。请马上行动！\n\n" +
-            "（面对这种情况，你会怎么应对？）";
+        return "您好，我是公安局刑警支队民警。您的身份证被冒用涉嫌洗钱案件，请将资金转入安全核查账户配合调查。";
+      case "social":
+        return "嗨！我是学习群里的同学~我最近在玩游戏需要手机号注册，你的手机号借我用一下呗，就收个验证码！";
       default:
-        return "【AI教练】你好！现在开始网络安全防范实训。\n\n" +
-            "你收到了一条可疑信息，对方声称你的账户存在异常需要立即处理。你会怎么回应？";
+        return "你收到了一条可疑信息，对方声称你的账户存在异常需要立即处理。你会怎么回应？";
     }
   }
 
@@ -253,23 +329,29 @@ public class ChatService {
 
   private String getStrongAwarenessReply(String sceneType, String message) {
     StringBuilder sb = new StringBuilder();
-    sb.append("【AI教练点评】太棒了！你成功识破了这个骗局！\n\n");
+    sb.append("嗯，你的回答很有意思～\n\n");
+    sb.append("看得出来你有认真在思考这件事。");
+    sb.append("不过我还想问问你：你做出这样的判断，依据是什么？");
+    sb.append("对方说的哪些地方让你觉得不太对劲？\n\n");
 
-    sb.append("你做得好的地方：\n");
-    sb.append("1. 你对陌生信息保持了高度警惕，没有轻易相信对方的身份和说辞\n");
-    sb.append("2. 你没有泄露任何个人信息（姓名、身份证号、密码、验证码等）\n");
-    sb.append("3. 你懂得要求核实对方身份，这是防范诈骗最重要的一步\n\n");
-
-    if ("phishing".equals(sceneType)) {
-      sb.append("特别提醒：正规银行永远不会通过短信链接让你输入密码或验证码。遇到此类情况，直接拨打银行官方客服电话核实。\n");
-    } else if ("account".equals(sceneType)) {
-      sb.append("特别提醒：真正的安全中心不会要求你提供验证码。验证码=你的电子签名，给了骗子就等于把账户交给对方。\n");
-    } else if ("fraud".equals(sceneType)) {
-      sb.append("特别提醒：公安机关不存在\"安全账户\"！真正的警察不会通过电话办案，更不会要求转账。遇到此类情况直接挂断并拨打110。\n");
+    switch (sceneType) {
+      case "social":
+        sb.append("另外你有没有想过，为什么网络上刚认识的人会对你这么热情？\n");
+        break;
+      case "phishing":
+        sb.append("另外你想一想，银行平时会通过短信链接来联系你办业务吗？\n");
+        break;
+      case "account":
+        sb.append("你再想想，如果有人拿到了你的验证码，他能做些什么事情？\n");
+        break;
+      case "fraud":
+        sb.append("你有没有想过，真正的执法机关会通过电话来办案吗？\n");
+        break;
+      default:
+        sb.append("多思考一步：在什么情况下，你会愿意相信对方呢？\n");
     }
 
-    sb.append("\n坚持这样的安全意识，你就是网络安全小卫士！\n\n");
-    sb.append("实训对话已完成。你可以点击\"结束实训\"按钮返回，你的记录将提交给教师评阅。");
+    sb.append("\n看来你已经掌握了不少自我保护的能力。实训就到这里，你可以点击\"结束实训\"按钮，让老师看看你的表现。");
 
     return sb.toString();
   }
@@ -278,45 +360,40 @@ public class ChatService {
     if (turn <= 2) {
       return getScenarioFollowUp(sceneType, turn, true);
     }
-    return "你对骗局有所警觉，但还不够坚定。记住：面对骗子的催促和威胁，保持冷静是关键。请想一想，如果对方继续用\"紧急\"来施压，你应该怎么做？";
+    return "你心里好像已经有了点判断，但还不够确定？没关系。对方老说\"很紧急\"，你留意到这种套路了吗？当一个陌生人不断催你做决定的时候，你有没有想过他为什么这么着急？先停下来想一想，再跟我说说你的新想法。";
   }
 
   private String getHesitantReply(String sceneType, int turn, String message) {
     StringBuilder sb = new StringBuilder();
-    sb.append("我能感受到你有些犹豫。这是正常的，但请记住：骗子就是利用你的犹豫和恐惧来行骗的。\n\n");
-    sb.append("判断真假的简单方法：\n");
-    sb.append("- 真正的机构从不会通过电话/短信索要密码和验证码\n");
-    sb.append("- 真正的警察不会电话办案要求转账\n");
-    sb.append("- 遇到可疑情况，挂断后自己拨打官方电话核实\n\n");
+    sb.append("我能感觉到你好像有点拿不定主意～\n\n");
+    sb.append("那你试着换个角度想一想：如果这件事发生在你好朋友身上，你会怎么建议他？");
+    sb.append("或者说，对方说的哪些话让你觉得\"可能是真的\"，哪些又让你觉得\"哪里怪怪的\"？\n\n");
+    sb.append("不用急着下结论，我们可以一起慢慢想。\n\n");
     sb.append(getScenarioFollowUp(sceneType, turn, false));
     return sb.toString();
   }
 
   private String getScammedReply(String sceneType, String message) {
     StringBuilder sb = new StringBuilder();
-    sb.append("【注意】你刚才的行为存在被骗的风险！让我帮你分析：\n\n");
+    sb.append("先停下来，让我问你几个问题：\n\n");
 
     if (message.contains("密码") || message.contains("银行卡") || message.contains("验证码")) {
-      sb.append("问题：你提到了敏感信息！任何情况下都不要向陌生人透露密码、银行卡号或验证码。这些信息一旦泄露，骗子可以盗走你账户里的所有钱。\n\n");
+      sb.append("- 你想过没有，对方要你的这些信息能干什么？\n");
     }
     if (message.contains("链接") || message.contains("下载") || message.contains("点击")) {
-      sb.append("问题：你打算点击陌生链接！不明链接可能是钓鱼网站，一旦输入信息就会被盗。\n\n");
+      sb.append("- 你有没有想过那个链接点开之后会是什么？\n");
     }
     if (message.contains("转账") || message.contains("汇款") || message.contains("安全账户")) {
-      sb.append("问题：你提到了转账！\"安全账户\"是骗子的谎言。公安机关从不会要求任何人转账到所谓安全账户。\n\n");
+      sb.append("- 你有没有见过\"安全账户\"这个东西？它在现实中存在吗？\n");
     }
     if (message.contains("好的") || message.contains("可以") || message.contains("行")) {
-      sb.append("问题：你轻易同意了对方的请求。请记住：对陌生人的任何要求，先核实再决定！\n\n");
+      sb.append("- 你这么快就答应了，有没有想过先确认一下对方的身份？\n");
     }
 
-    sb.append("如何避免被骗（请记住这5点）：\n");
-    sb.append("1. 冷静！不要被\"紧急\"\"涉嫌犯罪\"等话术吓到\n");
-    sb.append("2. 核实！挂断电话后，通过官方渠道确认信息真伪\n");
-    sb.append("3. 不说！永远不透露密码、验证码、身份证号、银行卡号\n");
-    sb.append("4. 不点！不点击陌生链接，不下载不明来源的应用\n");
-    sb.append("5. 求助！遇到可疑情况，第一时间告诉老师或家长，或拨打96110反诈热线\n\n");
+    sb.append("\n我不直接告诉你答案，但你可以试着去问一下身边的大人（老师、爸妈），");
+    sb.append("或者自己用搜索引擎查一查类似的事情。然后再回来跟我说说你的新想法吧。\n\n");
 
-    sb.append("现在再来一次——如果重新遇到类似情况，你会怎么做？");
+    sb.append("现在假设你冷静下来了，重新面对这个情况——你会怎么做？");
 
     return sb.toString();
   }
@@ -341,6 +418,12 @@ public class ChatService {
     fraud.add("（展示假证据）我们已经掌握了你参与犯罪的证据，现在给你最后一次机会自证清白。立即转账到安全账户配合核查！");
     fraud.add("真正的警察会这样办案吗？如果接到这样的电话，你应该先做什么？");
     followUps.put("fraud", fraud);
+
+    List<String> social = new ArrayList<>();
+    social.add("（继续套近乎）我们就是交个朋友嘛~我还有一个很有趣的微信群你要不要加？里面有很多福利活动，只要填写一下你的学校、班级和家庭住址就能参加抽奖哦！");
+    social.add("（加大诱惑）其实我表哥是明星经纪人，他正在招青少年练习生！你条件这么好，把你的自拍照和真实姓名发给我，我帮你推荐一下~");
+    social.add("（威胁恐吓）我其实已经拿到你的一些信息了。如果你不把游戏账号密码给我，我就把你和我的聊天记录发到你们班的群里。你看着办吧！");
+    followUps.put("social", social);
 
     List<String> sceneFollowUps = followUps.getOrDefault(sceneType, followUps.get("phishing"));
     int idx = Math.min(turn - 1, sceneFollowUps.size() - 1);
